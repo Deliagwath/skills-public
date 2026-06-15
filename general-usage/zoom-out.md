@@ -32,7 +32,7 @@ Does this align with the direction things are already heading? Surface any tensi
 ## During the session
 
 ### Stay at altitude
-Do not get pulled into implementation details. If the conversation drifts toward "how", redirect: "We can drill into that with `ws:grill-with-docs` — for now, is the direction itself sound?"
+Do not get pulled into implementation details. If the conversation drifts toward "how", redirect: "We can drill into that with `zoom-in` — for now, is the direction itself sound?"
 
 ### Name the assumption, not just the risk
 When something looks risky, state the underlying assumption explicitly before assessing the risk. "This assumes X. If X is false, then Y."
