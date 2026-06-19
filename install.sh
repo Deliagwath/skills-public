@@ -9,8 +9,16 @@ _ok()      { echo "  ✓ $*"; }
 _warn()    { echo "  ! $*"; }
 
 # --- OpenCode skill validation ---
-# OpenCode requires YAML frontmatter with 'name' and 'description' in each .md skill file.
+# OpenCode requires YAML frontmatter with 'name' and 'description' in each SKILL.md.
 # Skills missing these fields are silently filtered out during loading.
+#
+# OpenCode loads skills from **/SKILL.md inside subdirectories:
+#   ~/.config/opencode/skills/<skill-name>/SKILL.md
+#   .opencode/skills/<skill-name>/SKILL.md
+#   ~/.claude/skills/<skill-name>/SKILL.md
+#   ~/.agents/skills/<skill-name>/SKILL.md
+# The skills.paths config only works for directories containing subdirectories
+# with SKILL.md files — NOT for flat directories of .md files.
 
 _has_skill_frontmatter() {
     local file="$1"
@@ -61,6 +69,29 @@ _validate_opencode_skills() {
     return 0
 }
 
+_install_opencode_skills() {
+    local dir="$1"
+    local namespace="$2"
+    local skills_dir="$HOME/.config/opencode/skills"
+    local count=0
+
+    mkdir -p "$skills_dir"
+
+    for f in "$dir"*.md; do
+        [ -f "$f" ] || continue
+        skill_name="$(basename "$f" .md)"
+        # Use namespace-skill prefix to avoid collisions
+        skill_slug="${namespace}-${skill_name}"
+        target_dir="$skills_dir/$skill_slug"
+        mkdir -p "$target_dir"
+        # Copy (not symlink) to ensure the file is self-contained
+        cp -f "$f" "$target_dir/SKILL.md"
+        count=$((count + 1))
+    done
+
+    _ok "OpenCode     [$namespace]: $count skills → $skills_dir/ (as $namespace-<skill>/SKILL.md)"
+}
+
 # --- Client detection ---
 
 _has_claude=0   # Claude Code CLI + VS Code extension (shared ~/.claude/commands/)
@@ -79,6 +110,7 @@ fi
 
 _opencode_config="$HOME/.config/opencode/opencode.json"
 if [ -f "$_opencode_config" ] \
+    || [ -d "$HOME/.config/opencode/skills" ] \
     || [ -f "$HOME/.opencode/bin/opencode" ] \
     || command -v opencode &>/dev/null; then
     _has_opencode=1
@@ -121,26 +153,31 @@ for dir in "$REPO_DIR"/*/; do
         _ok "Cursor       [$namespace]: $count skills → ~/.cursor/commands/ (prefix: ${namespace}-)"
     fi
 
-    # OpenCode: validate and register each namespace directory in skills.paths
-    if [ "$_has_opencode" = "1" ] && [ -f "$_opencode_config" ]; then
-        # Validate skills have required frontmatter before registering
+    # OpenCode: copy each skill as ~/.config/opencode/skills/<namespace>-<skill>/SKILL.md
+    if [ "$_has_opencode" = "1" ]; then
         if ! _validate_opencode_skills "$dir" "$namespace"; then
-            _warn "OpenCode [$namespace]: skipping registration — fix the missing frontmatter above"
+            _warn "OpenCode [$namespace]: skipping install — fix the missing frontmatter above"
             continue
         fi
-
-        if ! command -v jq &>/dev/null; then
-            _warn "OpenCode: jq not found — skipping skills.paths registration (install jq and re-run)"
-        else
-            # Resolve symlink so we modify the real file, not the link target's parent
-            real_config="$(realpath "$_opencode_config")"
-            # Normalize path: remove trailing slash to avoid duplicate entries
-            normalized_dir="${dir%/}"
-            updated="$(jq --arg p "$normalized_dir" '
-                .skills.paths = ((.skills.paths // []) + [$p] | unique)
-            ' "$real_config")"
-            echo "$updated" > "$real_config"
-            _ok "OpenCode     [$namespace]: registered $normalized_dir in skills.paths"
-        fi
+        _install_opencode_skills "$dir" "$namespace"
     fi
 done
+
+# --- Post-install cleanup ---
+# Remove stale skills.paths entries that pointed to this repo (no longer needed
+# since skills are now copied directly to ~/.config/opencode/skills/)
+if [ "$_has_opencode" = "1" ] && [ -f "$_opencode_config" ] && command -v jq &>/dev/null; then
+    real_config="$(realpath "$_opencode_config")"
+    repo_prefix="$(dirname "$REPO_DIR")"
+    updated="$(jq --arg prefix "$repo_prefix" '
+        if .skills.paths then
+            .skills.paths |= map(select(startswith($prefix) | not))
+            | if (.skills.paths | length) == 0 then del(.skills.paths) else . end
+        else . end
+        | if (.skills | length) == 0 then del(.skills) else . end
+    ' "$real_config")"
+    if [ "$updated" != "$(cat "$real_config")" ]; then
+        echo "$updated" > "$real_config"
+        _info "Cleaned up stale skills.paths entries from config"
+    fi
+fi
