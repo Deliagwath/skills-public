@@ -1,5 +1,5 @@
 ---
-name: to-waterfall
+name: general-usage-to-waterfall
 description: Translates findings from a conversation session into facilitated-waterfall artifacts like Directions, Epics, Tasks, ADRs, or CONTEXT.md entries. Use after a discussion to capture emergent decisions, validated problems, resolved domain terms, or implementation plans before they are lost.
 ---
 

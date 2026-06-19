@@ -1,5 +1,5 @@
 ---
-name: simulate
+name: general-usage-simulate
 description: Traces every execution branch of a target function, route, method, or system and writes detailed findings to the working directory. Use when analyzing code execution paths, understanding system behavior, or documenting how a component works across all scenarios.
 ---
 

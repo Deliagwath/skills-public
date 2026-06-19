@@ -1,5 +1,5 @@
 ---
-name: plan
+name: facilitated-waterfall-plan
 description: Creates an implementation plan from a Task document with related ADRs, drilling on ambiguities before writing concrete, numbered steps. Use when planning how to implement a specific task, or when a Task needs to be turned into executable steps with verification criteria.
 ---
 

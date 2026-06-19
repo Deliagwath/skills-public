@@ -1,5 +1,5 @@
 ---
-name: shape
+name: facilitated-waterfall-shape
 description: Interviews the user to define a Direction artifact with Problem, Appetite, Out of scope, Success signal, and Constraints sections. Use when starting a new initiative, defining project direction, or capturing a new goal as a structured Direction file.
 ---
 

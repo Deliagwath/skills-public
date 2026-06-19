@@ -1,5 +1,5 @@
 ---
-name: zoom-in
+name: general-usage-zoom-in
 description: Interviews relentlessly about every aspect of a plan to reach shared understanding, walking down each branch of the design tree and resolving dependencies. Use when drilling into design details, clarifying a plan, or stress-testing decisions against code and existing documentation.
 ---
 

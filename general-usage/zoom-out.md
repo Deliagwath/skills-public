@@ -1,5 +1,5 @@
 ---
-name: zoom-out
+name: general-usage-zoom-out
 description: Steps back from design details to question whether a direction is worth pursuing, surfacing unstated assumptions, alternatives, reversibility, and strategic fit. Use when validating strategy before committing, questioning assumptions about a direction, or assessing whether an initiative should proceed.
 ---
 

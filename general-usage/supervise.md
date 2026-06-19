@@ -1,5 +1,5 @@
 ---
-name: supervise
+name: general-usage-supervise
 description: Reviews implementation against plans and ADRs in iterative cycles, spawning fresh subagents to avoid context drift, fixing what can be fixed autonomously and escalating decisions that need human input. Use when reviewing code quality, ensuring implementation matches requirements, or running iterative review cycles against a plan.
 ---
 

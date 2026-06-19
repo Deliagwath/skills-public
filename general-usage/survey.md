@@ -1,5 +1,5 @@
 ---
-name: survey
+name: general-usage-survey
 description: Scans the current project situation and provides an honest assessment of what exists, what's unclear, what's adjacent, and what's blocking progress. Use when assessing current project status, checking progress, or getting a landscape view without drilling into details or strategy.
 ---
 

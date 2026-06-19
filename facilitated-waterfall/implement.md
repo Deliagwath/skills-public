@@ -1,5 +1,5 @@
 ---
-name: implement
+name: facilitated-waterfall-implement
 description: Reads a Plan and related ADRs, resolves ambiguities through drilling, implements the code, and verifies against both the plan and architectural decisions. Use when implementing a planned task from documentation, or when code changes need to follow a documented plan with ADR constraints.
 ---
 
