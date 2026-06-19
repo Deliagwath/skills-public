@@ -1,3 +1,8 @@
+---
+name: design
+description: Interviews the user about design decisions for an Epic or Direction, walking down each branch of the design tree and resolving dependencies one-by-one. Use when making architectural or design decisions for a feature, or when exploring trade-offs and dependencies for a planned initiative.
+---
+
 <what-to-do>
 
 Read the input artifact and its related documents, then interview the user about the design decisions it raises until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies one-by-one. For each question, provide your recommended answer.

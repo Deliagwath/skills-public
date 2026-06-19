@@ -1,3 +1,8 @@
+---
+name: implement
+description: Reads a Plan and related ADRs, resolves ambiguities through drilling, implements the code, and verifies against both the plan and architectural decisions. Use when implementing a planned task from documentation, or when code changes need to follow a documented plan with ADR constraints.
+---
+
 Read the input Plan and its related ADRs, drill on ambiguities, implement, then verify against both.
 
 Find the input: interpret the argument naturally to locate the file in `docs/plans/`. If no argument, scan and ask.

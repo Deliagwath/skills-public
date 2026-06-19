@@ -1,3 +1,8 @@
+---
+name: breakdown
+description: Breaks a Direction into Epics, or an Epic into Tasks with iterative probing and boundary testing. Use when decomposing high-level work into manageable units, splitting Directions into Epics, or breaking Epics into Tasks.
+---
+
 Break a Direction into Epics, or an Epic into Tasks.
 
 **Find the input:** interpret the argument naturally to locate the file. If no argument, scan `docs/directions/` or `docs/epics/` and ask the user to pick.

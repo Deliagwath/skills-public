@@ -1,3 +1,8 @@
+---
+name: to-waterfall
+description: Translates findings from a conversation session into facilitated-waterfall artifacts like Directions, Epics, Tasks, ADRs, or CONTEXT.md entries. Use after a discussion to capture emergent decisions, validated problems, resolved domain terms, or implementation plans before they are lost.
+---
+
 Translate findings from the current session into the appropriate facilitated-waterfall artifact. The session may have used zoom-in, zoom-out, survey, or open conversation — the goal is to capture what emerged before it is lost.
 
 ## Phase 1 — Extract

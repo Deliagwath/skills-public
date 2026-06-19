@@ -1,3 +1,8 @@
+---
+name: survey
+description: Scans the current project situation and provides an honest assessment of what exists, what's unclear, what's adjacent, and what's blocking progress. Use when assessing current project status, checking progress, or getting a landscape view without drilling into details or strategy.
+---
+
 Scan the current situation and give me an honest picture of where things stand. Don't drill into specifics and don't pull back to strategy — stay at the level we're operating at right now.
 
 <supporting-info>

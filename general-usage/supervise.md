@@ -1,3 +1,8 @@
+---
+name: supervise
+description: Reviews implementation against plans and ADRs in iterative cycles, spawning fresh subagents to avoid context drift, fixing what can be fixed autonomously and escalating decisions that need human input. Use when reviewing code quality, ensuring implementation matches requirements, or running iterative review cycles against a plan.
+---
+
 Review the current implementation against its plan and ADRs, fix what can be fixed autonomously, and surface decisions that require the programmer to resolve. Each review cycle spawns a fresh subagent so findings are never influenced by the accumulated context of previous cycles.
 
 You are the supervisor. You orchestrate the loop, apply fixes, and make escalation decisions. You do not do the reviewing yourself.

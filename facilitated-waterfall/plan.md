@@ -1,3 +1,8 @@
+---
+name: plan
+description: Creates an implementation plan from a Task document with related ADRs, drilling on ambiguities before writing concrete, numbered steps. Use when planning how to implement a specific task, or when a Task needs to be turned into executable steps with verification criteria.
+---
+
 Read the input Task and its related ADRs, then drill on the plan before writing it.
 
 Find the input: interpret the argument naturally to locate the file in `docs/tasks/`. If no argument, scan and ask.

@@ -1,3 +1,8 @@
+---
+name: shape
+description: Interviews the user to define a Direction artifact with Problem, Appetite, Out of scope, Success signal, and Constraints sections. Use when starting a new initiative, defining project direction, or capturing a new goal as a structured Direction file.
+---
+
 Interview the user about a problem or goal until all five sections of a Direction are resolved, then write the Direction file.
 
 If an argument is provided, treat it as the opening problem statement and proceed to the first question. If not, ask the user to describe the problem first.

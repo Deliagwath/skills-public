@@ -1,3 +1,8 @@
+---
+name: simulate
+description: Traces every execution branch of a target function, route, method, or system and writes detailed findings to the working directory. Use when analyzing code execution paths, understanding system behavior, or documenting how a component works across all scenarios.
+---
+
 Trace every execution branch of the target and write the findings to the working directory.
 
 The target is whatever the user specifies — a single function, route, or method; or a system (service, module, feature area). If no target is given, ask for one before proceeding.
