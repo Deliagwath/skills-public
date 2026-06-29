@@ -39,10 +39,12 @@ Direction → Epic → Task → Plan → Code
 
 ### `general-usage/`
 
-General-purpose skills for everyday work in a workspace — reviewing, exploring, assessing, drilling. They stand on their own and are useful whether or not you use facilitated-waterfall at all. One of them (`to-waterfall`) happens to offer a path *into* the waterfall, but that's an option, not the point.
+General-purpose skills for everyday work in a workspace — reviewing, exploring, assessing, drilling, and accumulating project knowledge (`note`/`recall`) that compounds across sessions. They stand on their own and are useful whether or not you use facilitated-waterfall at all. One of them (`to-waterfall`) happens to offer a path *into* the waterfall, but that's an option, not the point.
 
 | Skill | What it does |
 |-------|--------------|
+| `note` | Records what a session learned into a fixed six-file knowledge base in `docs/knowledge/`; also prunes stale notes. |
+| `recall` | Loads knowledge relevant to a query from `docs/knowledge/` before you start work. The read half of `note`. |
 | `review` | Reviews a diff/branch/PR or a waterfall document for correctness, quality, consistency. |
 | `simulate` | Traces every execution branch of a function/route/system and writes the findings out. |
 | `supervise` | Reviews implementation against plans + ADRs in iterative cycles with fresh subagents. |

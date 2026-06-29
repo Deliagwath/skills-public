@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `audit-doc` — read-only check that an implementation stays inside its governing documents.
   - `what-next` — recommend the best next action by walking the `relates` graph and codebase.
 - `general-usage/` namespace: skills usable outside the waterfall, able to feed into it.
+  - `note` — record what a session learned into a self-improving knowledge base: a fixed six-file store in `docs/knowledge/`, harvested from the conversation, verified, routed, and pruned to stay current.
+  - `recall` — load knowledge relevant to a query from the `note` store before starting work; the read half of `note`.
   - `review` — review code changes or waterfall documents.
   - `simulate` — trace every execution branch of a target and write findings out.
   - `supervise` — iterative implementation review with fresh subagents.
