@@ -31,13 +31,13 @@ State explicitly what each finding relates to, supersedes, or leaves untouched. 
 
 Write each artifact in the correct location and format:
 
-**Direction** (`docs/directions/NNN-slug.md`) — frontmatter: `id`, `title`, `status: draft`, `created`, `relates: []`. Body: Problem · Appetite · Out of scope · Success signal · Constraints.
+**Direction** (`docs/directions/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: []`. Body: Problem · Appetite · Out of scope · Success signal · Constraints.
 
-**Epic** (`docs/epics/NNN-slug.md`) — frontmatter: `id`, `title`, `status: draft`, `created`, `relates: [<direction id>]`. Body: Goal · Scope · Out of scope.
+**Epic** (`docs/epics/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: [<direction id>]`. Body: Goal · Scope · Out of scope.
 
-**Task** (`docs/tasks/NNN-slug.md`) — frontmatter: `id`, `title`, `status: draft`, `created`, `relates: [<epic id>]`. Body: Goal · Notes.
+**Task** (`docs/tasks/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: [<epic id>]`. Body: Goal · Notes.
 
-**ADR** (`docs/adr/NNN-slug.md`) — frontmatter: `id`, `title`, `status: accepted`, `created`, `relates: []`. Body: Context · Decision · Consequences.
+**ADR** (`docs/adr/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: []`, optional `supersedes: [<adr id>]`. Body: Context · Decision · Consequences.
 
 **CONTEXT.md** — append to the glossary. Term and definition only. No implementation detail.
 
@@ -49,5 +49,5 @@ Number each new file sequentially from the highest existing file in the target d
 
 - Do not invent findings. Only capture what the session actually produced.
 - If the session produced nothing worth preserving, say so.
-- If an existing artifact is superseded, update its `status` to `superseded` and add a `superseded-by` field pointing to the new file.
+- If a decision changes, append a new ADR whose `supersedes` field names the old one. Never edit the original — supersession is recorded by the new file, not by mutating the old.
 - Do not duplicate content already in the conversation into the artifact verbatim — distil it.

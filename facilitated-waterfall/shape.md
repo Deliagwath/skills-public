@@ -28,6 +28,6 @@ When a section produces a vague answer, drill until it is precise before moving 
 
 ## Output
 
-When all five are resolved, number sequentially from the highest existing file in `docs/directions/`. Write `docs/directions/NNN-slug.md` with frontmatter (`id`, `title`, `status: draft`, `created`, `relates: []`) and the five sections as body.
+When all five are resolved, number sequentially from the highest existing file in `docs/directions/`. Write `docs/directions/NNN-slug.md` with frontmatter (`id`, `title`, `created`, `relates: []`) and the five sections as body.
 
 Update `CONTEXT.md` when a domain term is resolved. Glossary only — no implementation detail.

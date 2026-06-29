@@ -31,7 +31,7 @@ Produce artifacts one at a time, confirming each before moving to the next:
 - Direction → Epics in `docs/epics/NNN-slug.md`
 - Epic → Tasks in `docs/tasks/NNN-slug.md`
 
-Each file: frontmatter (`id` as filepath, `title`, `status: draft`, `created`, `relates: [<input id>]`) + body:
+Each file: frontmatter (`id` as filepath, `title`, `created`, `relates: [<input id>]`) + body:
 
 **Epic body:** Goal · Scope · Out of scope
 
