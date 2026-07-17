@@ -45,4 +45,6 @@ Only when all three are true:
 
 Write ADRs to `docs/adr/NNNN-slug.md`. Set `relates` to include the input artifact's id.
 
+**Body:** Context (what situation forced this decision) · Decision (what was chosen) · Consequences (what this makes easier or harder going forward).
+
 </supporting-info>

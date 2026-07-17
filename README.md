@@ -58,6 +58,7 @@ If you *do* run facilitated-waterfall, `to-waterfall` provides an optional path 
 ## Core principles
 
 - **Append-only.** Artifacts are not edited in place once they record a decision. A changed decision is captured by appending a *new* ADR that supersedes the old one — the history of why stays intact.
+- **Completion is recorded, not inferred.** `implement` appends one line to `docs/plans/LEDGER.md` when a Plan's verification passes — done once, never edited. A wrong entry is fixed by a new line, not a rewrite, same as ADR supersession. This is what lets `what-next` and `audit-doc` know a Plan is finished without guessing from code or git history.
 - **The `relates` graph is the source of truth.** Links point upward (Epic→Direction, Task→Epic, Plan→Task, ADR→artifact) and are fixed at creation. A child's existence proves its parent was broken down; the codebase proves a Plan was implemented.
 - **Code is ground truth; docs are the boundary.** When they disagree, that disagreement *is* the finding. `/audit-doc` reports it rather than silently picking a side.
 - **Drill before you write.** Every authoring skill shares one technique: sharpen fuzzy language, probe with concrete scenarios, push back on first answers, and resolve decisions inline rather than batching them.
@@ -71,9 +72,10 @@ facilitated-waterfall skills read and write under `docs/` in the *target* projec
 docs/
   directions/NNN-slug.md   Problem · Appetite · Out of scope · Success signal · Constraints
   epics/NNN-slug.md        Goal · Scope · Out of scope
-  tasks/NNN-slug.md        Goal · Notes
+  tasks/NNN-slug.md        Goal · Acceptance Criteria · Notes
   plans/NNN-slug.md        Context · Steps · Verification
-  adr/NNNN-slug.md         Decision · Consequences
+  plans/LEDGER.md          Append-only record of which Plans are implemented
+  adr/NNNN-slug.md         Context · Decision · Consequences
 CONTEXT.md                 Glossary of resolved domain terms
 ```
 

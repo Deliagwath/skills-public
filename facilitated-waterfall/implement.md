@@ -34,7 +34,18 @@ Check the implementation against:
 
 Surface any gap explicitly. Do not report done if any verification item fails or any ADR decision is violated.
 
+## Phase 5 — Record
+
+Once every Verification item passes and no ADR is violated, append one line to `docs/plans/LEDGER.md` (create it, with no header, if it doesn't exist):
+
+```
+- <plan-id> — implemented <date> — verification: <N>/<N> checks passed
+```
+
+This is the only record that a Plan is done — Plans are never edited to mark themselves complete, the same way a changed ADR is superseded rather than rewritten. If a later session finds this entry was wrong, the fix is a new line stating the correction, never an edit to this one.
+
 ## Rules
 - Do not implement beyond the plan's scope.
 - Do not skip verification.
 - If a new ambiguity surfaces during implementation, stop and drill before continuing.
+- Do not append a ledger entry unless every verification item passed and no ADR was violated.

@@ -30,6 +30,7 @@ If the subject is code, look for facilitated-waterfall documents that constrain 
 1. Scan `docs/plans/` for a plan whose verification section references changed files or features
 2. Follow the plan's `relates` links to find the associated Task, Epic, and any ADRs
 3. Read every anchor fully — constraints, decisions, and verification criteria all matter
+4. Check `docs/plans/LEDGER.md` for an entry matching the plan's id; note its date if present
 
 If no documents are found, proceed without anchors and note this at the top of the report.
 
@@ -46,6 +47,7 @@ Evaluate the diff or changed files against:
 - Edge cases — are there obvious unhandled cases or missing guards?
 - Consistency — does it match surrounding code style and conventions?
 - Simplicity — is anything unnecessarily complex, duplicated, or over-engineered?
+- Already implemented? — if the anchor plan already has a ledger entry, this diff is touching work marked done. Not automatically wrong, but flag it as a Concern: is this an intentional correction (should get its own ledger entry / new Task), or silent rework of completed work?
 
 ### Document review
 
@@ -54,7 +56,7 @@ Evaluate the artifact against its type:
 - **Direction** — clear problem statement, bounded appetite, measurable success signal, explicit out-of-scope, no hidden assumptions?
 - **Epic** — covers the direction's success signal, tasks are coherent and non-overlapping?
 - **Task** — goal is specific, acceptance criteria are testable, no scope creep from the epic?
-- **Plan** — steps are concrete and ordered, verification criteria are runnable, references ADRs where decisions were made?
+- **Plan** — steps are concrete and ordered, verification criteria are runnable, references ADRs where decisions were made? If it already has a ledger entry, treat any edit to the Plan file itself as a Bug/Violation — a ledgered Plan is done writing; corrections belong in a new ledger line, not a rewrite.
 
 For any artifact: flag internal contradictions, missing sections, and links that point to non-existent files.
 

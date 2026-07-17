@@ -17,6 +17,7 @@ Read the target and walk `relates` **upward** to its governing artifacts (Plan �
 - **Plan** — Steps (what was to be built) and Verification (observable checks).
 - **Task / Epic** — Scope and especially **Out of scope**.
 - **Direction** — Constraints, Appetite, and Out of scope.
+- **Ledger** — check `docs/plans/LEDGER.md` for an entry matching the Plan's id. Note the claimed date and verification summary as a boundary to check, not as ground truth.
 
 List every boundary you collected before touching the code. These are the audit criteria.
 
@@ -33,6 +34,8 @@ For every boundary from Phase 1, judge the implementation:
 - **Violates** — code does something an ADR forbids or an Out-of-scope line excludes (scope creep), or contradicts a documented decision.
 - **Unverified** — a Plan Verification check that does not pass, or can't be run.
 - **Not implemented** — a boundary with no corresponding code at all.
+- **Ledger stale** — the ledger claims the Plan was implemented, but its Verification items no longer pass against current code.
+- **Unrecorded** — the code conforms to the Plan, but no ledger entry exists for it.
 
 Run cheap Verification commands where the Plan lists them. State evidence for every judgment — file and line, command output, or commit.
 
@@ -41,10 +44,12 @@ Run cheap Verification commands where the Plan lists them. State evidence for ev
 Present findings grouped by severity, violations first:
 
 ```
-docs/adr/004-no-sync-io.md     VIOLATED    src/cache.ts:88 does blocking read in request path
-docs/tasks/003-auth.md         DRIFT       added password reset — outside Plan steps
-docs/plans/005-auth.md         UNVERIFIED  `npm run e2e:auth` fails (2 specs)
-docs/directions/001.md         CONFORMS    no scope-creep against Out of scope
+docs/adr/004-no-sync-io.md     VIOLATED       src/cache.ts:88 does blocking read in request path
+docs/tasks/003-auth.md         DRIFT          added password reset — outside Plan steps
+docs/plans/005-auth.md         UNVERIFIED     `npm run e2e:auth` fails (2 specs)
+docs/plans/006-billing.md      LEDGER STALE   marked implemented 2026-05-01, but `npm run e2e:billing` now fails
+docs/plans/007-search.md       UNRECORDED     code complete, no ledger entry — append one
+docs/directions/001.md         CONFORMS       no scope-creep against Out of scope
 ```
 
 For each violation or drift, recommend the corrective action and name who owns the call:
@@ -58,5 +63,6 @@ Recommend, do not apply. Surface the drift; let the user decide.
 
 - Read-only. Write nothing. The output is a report, not a mutation.
 - Boundaries come from the governing docs; ground truth comes from the code. When they disagree, that disagreement *is* the finding — don't silently pick a side.
+- A ledger entry is a claim, not ground truth, same as any ADR or Plan. Corrections are new ledger lines, never edits to the old one.
 - A changed decision is recorded by appending a superseding ADR, never by editing the original.
 - State evidence for every judgment — no verdict without a file, line, command, or commit behind it.

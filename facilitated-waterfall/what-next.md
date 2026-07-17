@@ -19,6 +19,8 @@ for d in directions epics tasks plans; do
   echo "=== $d ==="
   grep -rH "^id:\|^relates:" docs/$d/ 2>/dev/null
 done
+echo "=== ledger ==="
+cat docs/plans/LEDGER.md 2>/dev/null
 git log --oneline -20
 ```
 
@@ -31,13 +33,13 @@ From the grep output alone, compute the orphans at each stage by joining `relate
 - **Childless Directions** — no Epic's `relates` contains this Direction's id.
 - **Childless Epics** — no Task's `relates` contains this Epic's id.
 - **Unplanned Tasks** — no Plan's `relates` contains this Task's id.
-- **Candidate-unimplemented Plans** — every Plan that exists (implementation can't be proven from the graph; defer to Phase 3).
+- **Unimplemented Plans** — every Plan whose id has no entry in `docs/plans/LEDGER.md`. A Plan with a ledger entry is implemented — no Phase 3 check needed for it.
 
 The **frontier** is the shallowest stage that has orphans — that's where the pipeline is blocked and work is most leveraged. Resolve upper stages before lower ones: a Direction with no Epics matters more than a Plan with no code, because nothing downstream can proceed without it.
 
 ## Phase 3 — Verify candidates against reality
 
-The graph tells you where docs are missing. It does **not** tell you whether the work itself is done — people routinely implement code without writing the Direction/Epic/Task/Plan first. So an orphan in the graph may already be built. Always cross-check against the codebase before recommending.
+The graph tells you where docs are missing. For Directions/Epics/Tasks it does **not** tell you whether the work itself is done — people routinely implement code without writing the doc first, so an orphan there may already be built. Always cross-check those against the codebase before recommending. Plans are the exception: `docs/plans/LEDGER.md` records completion explicitly, so a Plan without a ledger entry can be trusted as genuinely unimplemented — no cross-check needed unless you suspect the ledger itself is stale (that's `audit-doc`'s job, not this one's).
 
 Take the top ~3 frontier candidates (shallowest orphans first). For each, read **only** its own body if needed, then check reality:
 

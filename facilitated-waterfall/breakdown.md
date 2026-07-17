@@ -23,7 +23,7 @@ Ask one question at a time. Give your recommended answer before waiting for a re
 - **Push back** — do not accept the first answer without testing it. A decision is resolved when it holds under challenge, not when it's first stated.
 - **Resolve inline** — capture decisions as they happen, don't batch.
 
-For each proposed Epic or Task: probe its Goal until it is a single, testable outcome. Challenge its Out of scope — "what would a naive engineer add here?" Confirm boundaries with the adjacent artifacts before writing.
+For each proposed Epic or Task: probe its Goal until it is a single, testable outcome. Challenge its Out of scope — "what would a naive engineer add here?" For Tasks, also probe Acceptance Criteria until each item is observable and testable without judgment — the same bar `plan` applies to Verification. Confirm boundaries with the adjacent artifacts before writing.
 
 ## Output
 
@@ -35,7 +35,7 @@ Each file: frontmatter (`id` as filepath, `title`, `created`, `relates: [<input 
 
 **Epic body:** Goal · Scope · Out of scope
 
-**Task body:** Goal · Notes
+**Task body:** Goal · Acceptance Criteria · Notes
 
 Number sequentially from the highest existing file in the target directory.
 
