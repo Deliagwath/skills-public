@@ -92,11 +92,40 @@ _install_opencode_skills() {
     _ok "OpenCode     [$namespace]: $count skills → $skills_dir/ (as $namespace-<skill>/SKILL.md)"
 }
 
+# --- Mirai skill install ---
+# Mirai discovers skills at ~/.mirai/skills/<skill-name>/SKILL.md (user-level).
+# Each skill lives in its own directory containing a single SKILL.md. Files
+# already carry YAML frontmatter (name + description), matching Mirai's format.
+
+_install_mirai_skills() {
+    local dir="$1"
+    local namespace="$2"
+    local skills_dir="$HOME/.mirai/skills"
+    local count=0
+
+    mkdir -p "$skills_dir"
+
+    for f in "$dir"*.md; do
+        [ -f "$f" ] || continue
+        skill_name="$(basename "$f" .md)"
+        # Use namespace-skill prefix to avoid collisions
+        skill_slug="${namespace}-${skill_name}"
+        target_dir="$skills_dir/$skill_slug"
+        mkdir -p "$target_dir"
+        # Copy (not symlink) to ensure the file is self-contained
+        cp -f "$f" "$target_dir/SKILL.md"
+        count=$((count + 1))
+    done
+
+    _ok "Mirai        [$namespace]: $count skills → $skills_dir/ (as $namespace-<skill>/SKILL.md)"
+}
+
 # --- Client detection ---
 
 _has_claude=0   # Claude Code CLI + VS Code extension (shared ~/.claude/commands/)
 _has_cursor=0
 _has_opencode=0
+_has_mirai=0
 
 # Claude Code / VS Code Claude extension — both use ~/.claude/commands/
 command -v claude &>/dev/null || [ -d "$HOME/.claude" ] && _has_claude=1
@@ -116,8 +145,16 @@ if [ -f "$_opencode_config" ] \
     _has_opencode=1
 fi
 
-if [ "$_has_claude" = "0" ] && [ "$_has_cursor" = "0" ] && [ "$_has_opencode" = "0" ]; then
-    _warn "No supported clients detected (Claude Code, VS Code, Cursor, OpenCode) — nothing installed"
+# Mirai — user-level skills live at ~/.mirai/skills/<skill>/SKILL.md
+if [ -d "$HOME/.mirai" ] \
+    || [ -d "$HOME/.mirai/skills" ] \
+    || [ -d "/Applications/Mirai.app" ] \
+    || command -v mirai &>/dev/null; then
+    _has_mirai=1
+fi
+
+if [ "$_has_claude" = "0" ] && [ "$_has_cursor" = "0" ] && [ "$_has_opencode" = "0" ] && [ "$_has_mirai" = "0" ]; then
+    _warn "No supported clients detected (Claude Code, VS Code, Cursor, OpenCode, Mirai) — nothing installed"
     exit 0
 fi
 
@@ -160,6 +197,16 @@ for dir in "$REPO_DIR"/*/; do
             continue
         fi
         _install_opencode_skills "$dir" "$namespace"
+    fi
+
+    # Mirai: copy each skill as ~/.mirai/skills/<namespace>-<skill>/SKILL.md
+    # Reuses OpenCode's frontmatter validation (Mirai requires name + description too).
+    if [ "$_has_mirai" = "1" ]; then
+        if ! _validate_opencode_skills "$dir" "$namespace"; then
+            _warn "Mirai [$namespace]: skipping install — fix the missing frontmatter above"
+            continue
+        fi
+        _install_mirai_skills "$dir" "$namespace"
     fi
 done
 

@@ -1,6 +1,6 @@
 # skills
 
-A collection of AI-agent skills (slash commands) for Claude Code, Cursor, and OpenCode, organized into two namespaces:
+A collection of AI-agent skills (slash commands) for Claude Code, Cursor, OpenCode, and Mirai, organized into two namespaces:
 
 - **`facilitated-waterfall`** — an append-only, in-repo documentation system designed so that agents work from a rich, durable, and *enforceable* source of project knowledge rather than from a single throwaway prompt.
 - **`general-usage`** — general-purpose skills for everyday work in a workspace, useful on their own regardless of whether you adopt facilitated-waterfall.
@@ -19,23 +19,32 @@ The result is documentation that is both *referrable* (an agent can find the gov
 
 ### `facilitated-waterfall/`
 
-The core methodology. A waterfall pipeline where work flows downward and each stage produces a committed artifact:
+The core methodology. Work flows in **two directions** that meet at a dividing line — the **waterline** — which separates *commitment* (recorded, expensive to reverse) from *mechanism* (local, reversible):
 
 ```
-Direction → Epic → Task → Plan → Code
-                  ⮑ ADR (cross-cutting decisions)
-                  ⮑ CONTEXT.md (shared glossary)
+Direction → Epic? → Task → ADR          top-down: intent descends to the line
+                      ⭡      │
+                      │      ▼
+                    Plan → Code          bottom-up: fixes ascend to the line
+        ⮑ CONTEXT.md (shared glossary)   ⮑ docs/probes/ (bottom-up working memory)
 ```
 
-| Skill | Stage | What it does |
-|-------|-------|--------------|
-| `shape` | Direction | Interviews you to define a Direction (Problem · Appetite · Out of scope · Success signal · Constraints). |
-| `breakdown` | Epic / Task | Decomposes a Direction into Epics, or an Epic into Tasks. |
-| `design` | ADR | Interviews you about design decisions, walking the design tree and recording ADRs sparingly. |
-| `plan` | Plan | Turns a Task + its ADRs into concrete, numbered, verifiable steps. |
-| `implement` | Code | Reads a Plan + ADRs, drills ambiguities, implements, and verifies against both. |
-| `audit-doc` | — | Read-only. Checks whether what was built stays inside what was decided. |
-| `what-next` | — | Surveys the `relates` graph and codebase to recommend the single best next action. |
+- **Top-down** descends from intent and stops at a *placed, bounded unit* (a Task) — it never runs straight into implementation.
+- **Bottom-up** starts from a concrete fix in the code and climbs to check it sits in the right place, implementing *below* the line and reconciling what it learned back *up* into the record.
+- **ADR** is the shared ledger at the waterline: top-down writes it looking forward; bottom-up supersedes it on contact with code. Neither side may cross the line — top-down into code, or bottom-up over a commitment — without stopping (top-down hands off; bottom-up needs an accepted trade-off recorded as a superseding ADR).
+- **Epic is optional** — a manifest layer used only when one Direction spawns several ordered or dependent Tasks.
+
+**Three composed skills** are the primary interface:
+
+| Skill | Direction | What it does |
+|-------|-----------|--------------|
+| `top-down` | intent → waterline | Shapes a Direction, breaks it into Epics/Tasks, records ADRs — stopping at a bounded, implementable unit. |
+| `bottom-up` | code → waterline | Anchors a fix, climbs the abstraction ladder against the governing docs, resolves at the line, implements, and reconciles learnings back up. Records working memory in `docs/probes/`; loads `top-down` as a subroutine when it hits an above-the-line gap. |
+| `conventions` | — | Shared rules (drilling technique, the waterline, append-only, artifact formats, numbering) **and** the read-only audit: checks whether what was built stayed inside what was decided. |
+
+`what-next` remains a standalone navigation skill: it surveys the `relates` graph and codebase (now including open probes) to recommend the single best next action.
+
+The original granular skills — `shape`, `breakdown`, `design`, `plan`, `implement`, `audit-doc` — are the **units these compose from** and remain usable directly. Use the small parts when you want one stage; use the composed skills when you want the whole motion in one flow.
 
 ### `general-usage/`
 
@@ -60,8 +69,9 @@ If you *do* run facilitated-waterfall, `to-waterfall` provides an optional path 
 - **Append-only.** Artifacts are not edited in place once they record a decision. A changed decision is captured by appending a *new* ADR that supersedes the old one — the history of why stays intact.
 - **Completion is recorded, not inferred.** `implement` appends one line to `docs/plans/LEDGER.md` when a Plan's verification passes — done once, never edited. A wrong entry is fixed by a new line, not a rewrite, same as ADR supersession. This is what lets `what-next` and `audit-doc` know a Plan is finished without guessing from code or git history.
 - **The `relates` graph is the source of truth.** Links point upward (Epic→Direction, Task→Epic, Plan→Task, ADR→artifact) and are fixed at creation. A child's existence proves its parent was broken down; the codebase proves a Plan was implemented.
-- **Code is ground truth; docs are the boundary.** When they disagree, that disagreement *is* the finding. `/audit-doc` reports it rather than silently picking a side.
-- **Drill before you write.** Every authoring skill shares one technique: sharpen fuzzy language, probe with concrete scenarios, push back on first answers, and resolve decisions inline rather than batching them.
+- **Code is ground truth; docs are the boundary.** When they disagree, that disagreement *is* the finding. The `conventions` audit reports it rather than silently picking a side.
+- **The waterline divides commitment from mechanism.** Below it (module, class, placement) is reversible — the engineer decides freely. Above it (ADR decisions, Direction constraints) is committed — changing it needs an accepted trade-off, recorded as a superseding ADR. Top-down stops at the line and hands off; bottom-up may not overturn a commitment without recorded acceptance.
+- **Drill before you write.** Every authoring stage shares one technique: sharpen fuzzy language, probe with concrete scenarios, push back on first answers, and resolve decisions inline rather than batching them.
 - **Glossary, not prose.** `CONTEXT.md` holds resolved domain terms only — no implementation detail.
 
 ## Artifact layout
@@ -70,16 +80,17 @@ facilitated-waterfall skills read and write under `docs/` in the *target* projec
 
 ```
 docs/
-  directions/NNN-slug.md   Problem · Appetite · Out of scope · Success signal · Constraints
-  epics/NNN-slug.md        Goal · Scope · Out of scope
+  directions/NNN-slug.md   Problem · Appetite · Out of scope · Success signal · Constraints · Risk?
+  epics/NNN-slug.md        Goal · Scope · Out of scope · Tasks · Sequencing · Done when   (optional tier)
   tasks/NNN-slug.md        Goal · Acceptance Criteria · Notes
-  plans/NNN-slug.md        Context · Steps · Verification
+  plans/NNN-slug.md        Context · Steps · Verification · Risk
   plans/LEDGER.md          Append-only record of which Plans are implemented
-  adr/NNNN-slug.md         Context · Decision · Consequences
+  adr/NNNN-slug.md         Context · Decision · Consequences · Alternatives   (optional supersedes)
+  probes/<id>-slug.md      Trigger · Governing docs · Findings · Open questions · Deliberation · Risk · Reconciliation
 CONTEXT.md                 Glossary of resolved domain terms
 ```
 
-Every file carries frontmatter with at least `id`, `title`, `created`, and `relates: [...]`. Files are numbered sequentially from the highest existing file in their directory.
+Every durable file carries frontmatter with at least `id`, `title`, `created`, and `relates: [...]`, and is numbered sequentially from the highest existing file in its directory. **Probes are the exception**: they are mutable working memory (`open` → `reconciled`/`abandoned`), use collision-free dated ids (`probe-YYYY-MM-DD-slug`), and freeze once reconciled — everything a probe *produces* stays append-only.
 
 ## Installation
 
@@ -94,17 +105,26 @@ Every file carries frontmatter with at least `id`, `title`, `created`, and `rela
 | Claude Code / VS Code extension | `~/.claude/commands/<namespace>/<skill>.md` (symlinked) | `/<namespace>:<skill>` |
 | Cursor | `~/.cursor/commands/<namespace>-<skill>.md` (symlinked) | `/<namespace>-<skill>` |
 | OpenCode | `~/.config/opencode/skills/<namespace>-<skill>/SKILL.md` (copied) | `<namespace>-<skill>` |
+| Mirai | `~/.mirai/skills/<namespace>-<skill>/SKILL.md` (copied) | `<namespace>-<skill>` |
 
-> OpenCode requires YAML frontmatter (`name` + `description`) in every skill; the installer validates this and refuses to install a namespace with any skill missing it.
+> OpenCode and Mirai require YAML frontmatter (`name` + `description`) in every skill; the installer validates this and refuses to install a namespace with any skill missing it.
 
-Skills are referred to by bare name throughout this README (`shape`, `plan`, …); how you actually invoke one depends on the client — see the invocation column above.
+Skills are referred to by bare name throughout this README (`top-down`, `bottom-up`, …); how you actually invoke one depends on the client — see the invocation column above.
 
-## A typical flow
+## Typical flows
 
-1. `shape` a Direction for a new initiative.
-2. `breakdown` it into Epics, then an Epic into Tasks.
-3. `design` the hard decisions, recording ADRs where the choice is irreversible, surprising, and a real trade-off.
-4. `plan` a Task into numbered steps with observable verification.
-5. `implement` the Plan.
-6. `audit-doc` to confirm the code stayed inside its boundaries.
-7. `what-next` whenever you're unsure where the frontier is.
+Work usually starts from one of two ends and meets at the waterline.
+
+**Top-down — a new initiative:**
+
+1. `top-down` shapes a Direction, breaks it into Tasks (introducing an Epic only if several Tasks need a shared manifest), and records ADRs for irreversible, surprising, real trade-offs — stopping at a bounded Task.
+2. `bottom-up` picks up that Task, derives a Plan, implements below the line, and reconciles.
+3. The `conventions` audit confirms the code stayed inside its boundaries.
+
+**Bottom-up — a bug or change request rooted in code:**
+
+1. `bottom-up` anchors the fix, walks `relates` upward to the governing docs, and climbs the abstraction ladder — right spot? right class? right module? right architecture?
+2. If the fix fits *below* the line, it implements directly. If it needs an above-the-line change, it either records a superseding ADR (with accepted trade-off) or loads `top-down` to author the missing Direction/Task/ADR properly, then resumes.
+3. On close, it reconciles: distils findings into durable artifacts, verifies touched glossary terms, and freezes the probe.
+
+`what-next` at any point recommends the frontier — including resuming an open probe.
