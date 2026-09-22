@@ -1,6 +1,6 @@
 # skills
 
-A collection of AI-agent skills (slash commands) for Claude Code, Cursor, OpenCode, and Mirai, organized into two namespaces:
+A collection of AI-agent skills (slash commands) for Claude Code, Cursor, OpenCode, Mirai, and DeepSeek Harness, organized into two namespaces:
 
 - **`facilitated-waterfall`** — an append-only, in-repo documentation system designed so that agents work from a rich, durable, and *enforceable* source of project knowledge rather than from a single throwaway prompt.
 - **`general-usage`** — general-purpose skills for everyday work in a workspace, useful on their own regardless of whether you adopt facilitated-waterfall.
@@ -106,8 +106,17 @@ Every durable file carries frontmatter with at least `id`, `title`, `created`, a
 | Cursor | `~/.cursor/commands/<namespace>-<skill>.md` (symlinked) | `/<namespace>-<skill>` |
 | OpenCode | `~/.config/opencode/skills/<namespace>-<skill>/SKILL.md` (copied) | `<namespace>-<skill>` |
 | Mirai | `~/.mirai/skills/<namespace>-<skill>/SKILL.md` (copied) | `<namespace>-<skill>` |
+| DeepSeek Harness | `$DSH_HOME/skills/<namespace>-<skill>/SKILL.md` (copied) | `<namespace>-<skill>` |
 
-> OpenCode and Mirai require YAML frontmatter (`name` + `description`) in every skill; the installer validates this and refuses to install a namespace with any skill missing it.
+> OpenCode, Mirai and DSH require YAML frontmatter (`name` + `description`) in every skill; the installer validates this and refuses to install a namespace with any skill missing it.
+
+**DSH and multiple harness homes.** DSH scans `$DSH_HOME/skills` (per home) before `~/.agents/skills` (shared by every home on the machine). The installer writes the per-home root and resolves the home the way DSH does — `$DSH_HOME`, else `~/.dsh` — so a box running more than one harness chooses which one gets the skills by choosing the home for the run:
+
+```sh
+DSH_HOME=~/.dsh-harness ./install.sh   # the human-facing harness only
+```
+
+Setting `DSH_HOME` counts as detection on its own, so this works before that home has been created. Skills install model- **and** user-invocable (DSH's default for frontmatter that sets neither `disable-model-invocation` nor `user-invocable`): they appear in the model's `skill` catalog and as slash commands in the web UI.
 
 Skills are referred to by bare name throughout this README (`top-down`, `bottom-up`, …); how you actually invoke one depends on the client — see the invocation column above.
 

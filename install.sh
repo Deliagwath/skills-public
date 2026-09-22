@@ -120,12 +120,59 @@ _install_mirai_skills() {
     _ok "Mirai        [$namespace]: $count skills → $skills_dir/ (as $namespace-<skill>/SKILL.md)"
 }
 
+# --- DeepSeek Harness skill install ---
+# DSH scans a fixed rank order of skill roots. Two are user-level:
+#   rank 400  user-dsh     $DSH_HOME/skills   — per harness home
+#   rank 500  user-agents  ~/.agents/skills   — shared by every harness home
+# We write rank 400, so which agent a skill reaches is decided by the DSH_HOME
+# the installer runs under rather than by every home on the box at once. A
+# machine serving two harnesses (say a human-facing one and a headless one) can
+# then give skills to the first without loading the second's model catalog.
+#
+# Home resolution mirrors DSH's own: $DSH_HOME, else ~/.dsh. Install into a
+# non-default home by setting it for the run:
+#   DSH_HOME=~/.dsh-harness ./install.sh
+#
+# DSH accepts both <name>/SKILL.md bundles and flat <name>.md files. We write
+# bundles, matching the OpenCode and Mirai branches — a bundle directory is also
+# what DSH reports as `resourceBase`, so a skill that grows sibling files later
+# can resolve them relatively without moving.
+#
+# Skill names must be kebab-case and are global within a root, which is why the
+# namespace prefix is applied here as it is everywhere else.
+
+_dsh_home() { echo "${DSH_HOME:-$HOME/.dsh}"; }
+
+_install_dsh_skills() {
+    local dir="$1"
+    local namespace="$2"
+    local skills_dir
+    skills_dir="$(_dsh_home)/skills"
+    local count=0
+
+    mkdir -p "$skills_dir"
+
+    for f in "$dir"*.md; do
+        [ -f "$f" ] || continue
+        skill_name="$(basename "$f" .md)"
+        skill_slug="${namespace}-${skill_name}"
+        target_dir="$skills_dir/$skill_slug"
+        mkdir -p "$target_dir"
+        # Copy (not symlink) to ensure the file is self-contained
+        cp -f "$f" "$target_dir/SKILL.md"
+        count=$((count + 1))
+    done
+
+    _ok "DSH          [$namespace]: $count skills → $skills_dir/ (as $namespace-<skill>/SKILL.md)"
+}
+
 # --- Client detection ---
 
 _has_claude=0   # Claude Code CLI + VS Code extension (shared ~/.claude/commands/)
 _has_cursor=0
 _has_opencode=0
 _has_mirai=0
+_has_dsh=0
 
 # Claude Code / VS Code Claude extension — both use ~/.claude/commands/
 command -v claude &>/dev/null || [ -d "$HOME/.claude" ] && _has_claude=1
@@ -153,8 +200,17 @@ if [ -d "$HOME/.mirai" ] \
     _has_mirai=1
 fi
 
-if [ "$_has_claude" = "0" ] && [ "$_has_cursor" = "0" ] && [ "$_has_opencode" = "0" ] && [ "$_has_mirai" = "0" ]; then
-    _warn "No supported clients detected (Claude Code, VS Code, Cursor, OpenCode, Mirai) — nothing installed"
+# DeepSeek Harness — an explicit DSH_HOME is itself the request to install there,
+# so it counts as detection even when that home has not been created yet.
+if [ -n "${DSH_HOME:-}" ] \
+    || [ -d "$(_dsh_home)" ] \
+    || command -v dsh &>/dev/null; then
+    _has_dsh=1
+fi
+
+if [ "$_has_claude" = "0" ] && [ "$_has_cursor" = "0" ] && [ "$_has_opencode" = "0" ] \
+    && [ "$_has_mirai" = "0" ] && [ "$_has_dsh" = "0" ]; then
+    _warn "No supported clients detected (Claude Code, VS Code, Cursor, OpenCode, Mirai, DSH) — nothing installed"
     exit 0
 fi
 
@@ -207,6 +263,17 @@ for dir in "$REPO_DIR"/*/; do
             continue
         fi
         _install_mirai_skills "$dir" "$namespace"
+    fi
+
+    # DSH: copy each skill as $DSH_HOME/skills/<namespace>-<skill>/SKILL.md
+    # Reuses OpenCode's frontmatter validation — DSH's local provider requires
+    # name + description too, and drops a skill that parses without them.
+    if [ "$_has_dsh" = "1" ]; then
+        if ! _validate_opencode_skills "$dir" "$namespace"; then
+            _warn "DSH [$namespace]: skipping install — fix the missing frontmatter above"
+            continue
+        fi
+        _install_dsh_skills "$dir" "$namespace"
     fi
 done
 
