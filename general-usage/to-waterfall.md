@@ -1,6 +1,6 @@
 ---
 name: general-usage-to-waterfall
-description: Translates findings from a conversation session into facilitated-waterfall artifacts like Directions, Epics, Tasks, ADRs, or CONTEXT.md entries. Use after a discussion to capture emergent decisions, validated problems, resolved domain terms, or implementation plans before they are lost.
+description: Translates findings from a conversation session into facilitated-waterfall artifacts like Directions, Epics, Tasks, ADRs, or docs/CONTEXT.md entries. Use after a discussion to capture emergent decisions, validated problems, resolved domain terms, or implementation plans before they are lost.
 ---
 
 Translate findings from the current session into the appropriate facilitated-waterfall artifact. The session may have used zoom-in, zoom-out, survey, or open conversation — the goal is to capture what emerged before it is lost.
@@ -12,7 +12,7 @@ Identify what the session produced. Look for:
 - A validated problem or goal worth pursuing → Direction
 - A decomposition of work → Epic or Task
 - A hard-to-reverse design decision with real trade-offs → ADR
-- A domain term that was resolved or clarified → CONTEXT.md entry
+- A domain term that was resolved or clarified → docs/CONTEXT.md entry
 - An implementation plan for known work → Plan
 
 A single session may produce more than one artifact type. List what you find before writing anything.
@@ -23,7 +23,7 @@ Scan the existing `docs/` structure:
 
 - Does a Direction already exist that this extends or supersedes?
 - Does an ADR already cover this decision, or does it conflict with one?
-- Is a CONTEXT.md term being redefined, or is this net new?
+- Is a docs/CONTEXT.md term being redefined, or is this net new?
 
 State explicitly what each finding relates to, supersedes, or leaves untouched. Do not write until this is clear.
 
@@ -39,7 +39,7 @@ Write each artifact in the correct location and format:
 
 **ADR** (`docs/adr/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: []`, optional `supersedes: [<adr id>]`. Body: Context · Decision · Consequences.
 
-**CONTEXT.md** — append to the glossary. Term and definition only. No implementation detail.
+**docs/CONTEXT.md** — append to the glossary. Term and definition only. No implementation detail.
 
 **Plan** (`docs/plans/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: [<task id>, <adr ids>]`. Body: Context · Steps · Verification.
 

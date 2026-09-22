@@ -1,8 +1,9 @@
 # skills
 
-A collection of AI-agent skills (slash commands) for Claude Code, Cursor, OpenCode, Mirai, and DeepSeek Harness, organized into two namespaces:
+A collection of AI-agent skills (slash commands) for Claude Code, Cursor, OpenCode, Mirai, and DeepSeek Harness, organized into three namespaces:
 
 - **`facilitated-waterfall`** — an append-only, in-repo documentation system designed so that agents work from a rich, durable, and *enforceable* source of project knowledge rather than from a single throwaway prompt.
+- **`product-waterfall`** — the same two-direction discipline one layer up, for product decisions. It stacks on top of facilitated-waterfall and hands off to it at the Story.
 - **`general-usage`** — general-purpose skills for everyday work in a workspace, useful on their own regardless of whether you adopt facilitated-waterfall.
 
 ## Why this exists
@@ -15,7 +16,7 @@ An agent is only as good as the context it can recover. Chat history evaporates;
 
 The result is documentation that is both *referrable* (an agent can find the governing decision) and *enforceable* (drift from it is detectable).
 
-## The two namespaces
+## The namespaces
 
 ### `facilitated-waterfall/`
 
@@ -26,7 +27,7 @@ Direction → Epic? → Task → ADR          top-down: intent descends to the l
                       ⭡      │
                       │      ▼
                     Plan → Code          bottom-up: fixes ascend to the line
-        ⮑ CONTEXT.md (shared glossary)   ⮑ docs/probes/ (bottom-up working memory)
+        ⮑ docs/CONTEXT.md (glossary)     ⮑ docs/probes/ (bottom-up working memory)
 ```
 
 - **Top-down** descends from intent and stops at a *placed, bounded unit* (a Task) — it never runs straight into implementation.
@@ -46,6 +47,28 @@ Direction → Epic? → Task → ADR          top-down: intent descends to the l
 
 The original granular skills — `shape`, `breakdown`, `design`, `plan`, `implement`, `audit-doc` — are the **units these compose from** and remain usable directly. Use the small parts when you want one stage; use the composed skills when you want the whole motion in one flow.
 
+### `product-waterfall/`
+
+The product layer. It runs the same up-and-down motion against **`docs/PRODUCT.md`**: product identity, append-only resolved decisions (`D-NNN`), product-level out of scope (`X-NNN`), strategic themes, and a product glossary. It's platform-agnostic: everything lives in `docs/`, and an optional `tracker:` frontmatter key can link out to Jira or similar without any skill calling it.
+
+| Skill | Direction | What it does |
+|-------|-----------|--------------|
+| `direct` | intent → product waterline | Shapes a product Direction against `docs/PRODUCT.md`, breaks it into Epics and Stories, and stops at a Story. Also refines Stories. |
+| `reflect` | signal → product waterline | Classifies a real-world signal or an engineering finding, deliberates against `docs/PRODUCT.md`, records supersessions, and lists every affected artifact in both layers. `reflect bootstrap` creates `docs/PRODUCT.md`. |
+| `conventions` | — | The two stacked waterlines, the hooks, formats, and a read-only product-alignment audit. |
+
+**The two layers stack.** A Story is mechanism to the PM and commitment to engineering, so it's where one layer hands off to the other:
+
+```
+direct ──Story──▶ top-down ──Task──▶ bottom-up
+  ▲                  │                  │
+  │     conflicts with PRODUCT.md       │ Story can't be met / product commitment wrong
+  │                  ▼                  ▼
+  └──Affected────  reflect  ◀──────────┘ (or direct Refine, if only the Story moves)
+```
+
+An ADR can never override a product commitment. When engineering hits one, `bottom-up` hands it to `direct` (the Story changes) or `reflect` (a `docs/PRODUCT.md` decision is at stake). Both always involve the PM.
+
 ### `general-usage/`
 
 General-purpose skills for everyday work in a workspace — reviewing, exploring, assessing, drilling, and accumulating project knowledge (`note`/`recall`) that compounds across sessions. They stand on their own and are useful whether or not you use facilitated-waterfall at all. One of them (`to-waterfall`) happens to offer a path *into* the waterfall, but that's an option, not the point.
@@ -58,7 +81,7 @@ General-purpose skills for everyday work in a workspace — reviewing, exploring
 | `simulate` | Traces every execution branch of a function/route/system and writes the findings out. |
 | `supervise` | Reviews implementation against plans + ADRs in iterative cycles with fresh subagents. |
 | `survey` | Honest landscape assessment: what exists, what's unclear, what's blocking. |
-| `to-waterfall` | Translates a conversation's findings into Directions, Epics, Tasks, ADRs, or CONTEXT.md entries. |
+| `to-waterfall` | Translates a conversation's findings into Directions, Epics, Tasks, ADRs, or docs/CONTEXT.md entries. |
 | `zoom-in` | Drills relentlessly into a plan's details to reach shared understanding. |
 | `zoom-out` | Steps back to question whether a direction is worth pursuing at all. |
 
@@ -72,7 +95,7 @@ If you *do* run facilitated-waterfall, `to-waterfall` provides an optional path 
 - **Code is ground truth; docs are the boundary.** When they disagree, that disagreement *is* the finding. The `conventions` audit reports it rather than silently picking a side.
 - **The waterline divides commitment from mechanism.** Below it (module, class, placement) is reversible — the engineer decides freely. Above it (ADR decisions, Direction constraints) is committed — changing it needs an accepted trade-off, recorded as a superseding ADR. Top-down stops at the line and hands off; bottom-up may not overturn a commitment without recorded acceptance.
 - **Drill before you write.** Every authoring stage shares one technique: sharpen fuzzy language, probe with concrete scenarios, push back on first answers, and resolve decisions inline rather than batching them.
-- **Glossary, not prose.** `CONTEXT.md` holds resolved domain terms only — no implementation detail.
+- **Glossary, not prose.** `docs/CONTEXT.md` (engineering) and the `docs/PRODUCT.md` glossary (product) hold resolved terms only — no implementation detail.
 
 ## Artifact layout
 
@@ -87,8 +110,16 @@ docs/
   plans/LEDGER.md          Append-only record of which Plans are implemented
   adr/NNNN-slug.md         Context · Decision · Consequences · Alternatives   (optional supersedes)
   probes/<id>-slug.md      Trigger · Governing docs · Findings · Open questions · Deliberation · Risk · Reconciliation
-CONTEXT.md                 Glossary of resolved domain terms
+  CONTEXT.md               Glossary of resolved engineering terms
+  PRODUCT.md               product-waterfall: Identity · Decisions (D-NNN) · Out of scope (X-NNN) · Themes · Product glossary
+  product/
+    directions/NNN-slug.md Problem · Appetite · Out of scope · Success signal · Constraints
+    epics/NNN-slug.md      Capability · Scope · Out of scope · Success signal · Stories · Sequencing   (optional tier)
+    stories/NNN-slug.md    Outcome · Acceptance criteria · Out of scope · Revisions?   ← the seam to FW
+    probes/<id>-slug.md    Signal · Classification · Governing decisions · Deliberation · Outcome · Affected · Changes
 ```
+
+Everything lives under `docs/`. The two glossaries are deliberately separate: product terms go in `PRODUCT.md`, engineering terms in `CONTEXT.md`, and a term lives in exactly one of them.
 
 Every durable file carries frontmatter with at least `id`, `title`, `created`, and `relates: [...]`, and is numbered sequentially from the highest existing file in its directory. **Probes are the exception**: they are mutable working memory (`open` → `reconciled`/`abandoned`), use collision-free dated ids (`probe-YYYY-MM-DD-slug`), and freeze once reconciled — everything a probe *produces* stays append-only.
 
@@ -99,6 +130,12 @@ Every durable file carries frontmatter with at least `id`, `title`, `created`, a
 ```
 
 `install.sh` detects which clients are present and installs into each. It is idempotent — safe to re-run.
+
+To install into specific clients only, name them — this replaces detection:
+
+```sh
+./install.sh claude opencode dsh   # any of: claude cursor opencode mirai dsh
+```
 
 | Client | Destination | Invocation |
 |--------|-------------|------------|

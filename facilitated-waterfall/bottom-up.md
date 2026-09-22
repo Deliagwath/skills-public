@@ -1,6 +1,6 @@
 ---
 name: facilitated-waterfall-bottom-up
-description: Works a concrete task or fix from the code up to the waterline — locates the code, climbs the abstraction ladder to check it sits in the right place against the governing docs, resolves at the line, implements below it, and reconciles what it learned back into the durable record. Records working memory in docs/probes/. Use when handed a bug, change request, or task rooted in existing code.
+description: Works a concrete task or fix from the code up to the waterline — locates the code, climbs the abstraction ladder to check it sits in the right place against the governing docs, resolves at the line, implements below it, and reconciles what it learned back into the durable record. Hands product-level conflicts to product-waterfall direct or reflect. Records working memory in docs/probes/. Use when handed a bug, change request, or task rooted in existing code.
 ---
 
 Take a concrete trigger — a bug, a change request, a task — and carry it up to the waterline from the code side. Find the quick fix, then **look up**: is it in the right spot, the right class, the right module, the right architecture? Settle where it belongs, honor the commitments above the line, implement below it, and feed what you learned back up. Read `conventions` for the drilling technique, the waterline, append-only, formats, and numbering — not repeated here.
@@ -19,7 +19,7 @@ State the trigger and the candidate quick-fix in one or two lines. Create the Pr
 
 ## Phase 2 — Situate
 
-Locate the code (`grep`/`find`/`git log`). Walk `relates` **upward** from whatever artifact governs this area to collect every constraint — ADRs, the Task/Epic scope, the Direction. Record them in **Governing docs**. If none exist, write "code ahead of docs" — that is itself a finding to reconcile later.
+Locate the code (`grep`/`find`/`git log`). Walk `relates` **upward** from whatever artifact governs this area to collect every constraint — ADRs, the Task/Epic scope, the Direction. If the chain crosses into the product layer, keep walking: the Story, its product Epic/Direction, and the `docs/PRODUCT.md` D-/X-entries they cite. Record them in **Governing docs**. If none exist, write "code ahead of docs" — that is itself a finding to reconcile later.
 
 ## Phase 3 — Climb & deliberate
 
@@ -28,7 +28,10 @@ This is the heart, and it is the step most easily skipped — the pull toward a 
 ```
 placement (right spot?) → class (right abstraction?) → module (right owner?)
 → architecture/pattern (consistent?) → ══ WATERLINE ══ → ADR / Direction (still true?)
+→ ┄┄ seam ┄┄ Story (still achievable?) → ══ PRODUCT WATERLINE ══ → docs/PRODUCT.md (still true?)
 ```
+
+The last two rungs exist only when a product layer governs this area (see `conventions` → Product layer). When it does, the climb reads them too.
 
 **Explore the code before you conclude anything.** Read the code the fix touches *and* the code the governing ADR describes — reason from the source, not from the doc's summary of it. Record what you find in **Findings** (dated, append-only — what investigation revealed about reality). Record the climb in **Deliberation**: which rung each candidate settled or failed at, and whether the line was hit. Keep **Open questions** (each with "what would resolve it") and **Risk** (blast radius · rollback · cost-of-wrong) current as you go.
 
@@ -42,8 +45,12 @@ placement (right spot?) → class (right abstraction?) → module (right owner?)
     - Missing decision → `top-down` Phase 3 (ADR).
     - Missing work unit → `top-down` Phase 2 (Breakdown → Task).
     - Missing/mis-stated problem → `top-down` Phase 1 (Shape → Direction).
+- **Requires a product-level change** (product layer only) → never resolve it with an ADR. Hand it to the PM:
+  - *The Story can't hold* (Outcome, Acceptance, or Out of scope is wrong on contact with code, but no `docs/PRODUCT.md` entry is involved) → **load `product-waterfall` `direct`** Refine on the Story, passing this probe's Findings. Resume with its Revision, or with "Story holds", in which case find a mechanism that meets it.
+  - *A product decision or exclusion is the obstacle* (a D-/X-entry) → **load `product-waterfall` `reflect`**, with this finding as the signal and this probe as `relates`. Resume on its verdict: `holds` means go back down and honour it; `superseded` means continue against the new decision.
+  - Record the hand-off and its outcome in Deliberation.
 
-**Autonomy scales to tier** (per `conventions`): a **Direction**-level gap is intent — always interview the human. A **Task/ADR** gap whose answer is derivable from code + existing docs, you may drive autonomously, escalating only on genuine ambiguity.
+**Autonomy scales to tier** (per `conventions`): a **Direction**-level or product-level gap is intent — always interview the human. A **Task/ADR** gap whose answer is derivable from code + existing docs, you may drive autonomously, escalating only on genuine ambiguity.
 
 ## Phase 4 — Implement
 
@@ -54,8 +61,8 @@ Only below the line, only after Phase 3 resolves — meaning a per-ADR verdict i
 Distill the probe into durable record, then freeze it. The Probe cannot move to `reconciled` until **all** gates pass:
 
 - Every **Open question** is resolved or explicitly deferred.
-- Every Deliberation **conflict** is either fixed-in-code or recorded as a superseding ADR with accepted trade-off — never silently dropped.
-- Every **CONTEXT.md** term the work touched is verified against the current code and updated if stale.
+- Every Deliberation **conflict** is either fixed-in-code or recorded as a superseding ADR with accepted trade-off — never silently dropped. A product-level conflict is closed only by a Story Revision or a resolved `reflect` probe.
+- Every **docs/CONTEXT.md** term the work touched is verified against the current code and updated if stale.
 - The artifacts produced/updated are listed in **Reconciliation** (new/superseded ADR, updated Task, new Direction, CONTEXT entries), and their `relates` link back to this probe.
 
 Append a `LEDGER.md` line. Set `status: reconciled`. A probe abandoned (not worth pursuing) is set `status: abandoned` and kept as a "why we didn't" record.

@@ -1,6 +1,6 @@
 ---
 name: facilitated-waterfall-top-down
-description: Descends from intent to the waterline — shapes a Direction, breaks it into Epics/Tasks, and records ADRs — stopping at a placed, bounded unit rather than running into implementation. Use to start a new initiative, decompose work, or make an architectural decision. Loadable as a subroutine by bottom-up when a fix hits an above-the-line gap.
+description: Descends from intent to the waterline — shapes a Direction, breaks it into Epics/Tasks, and records ADRs — stopping at a placed, bounded unit rather than running into implementation. Use to start a new initiative, decompose work, or make an architectural decision. Also takes a product-waterfall Story as its entry. Loadable as a subroutine by bottom-up when a fix hits an above-the-line gap.
 ---
 
 Descend from intent toward the waterline. Produce durable, committed artifacts and **stop at a placed, bounded unit** — a Task ready to implement. Do not cross into implementation; that is `bottom-up`'s half. Read `conventions` for the drilling technique, the waterline, append-only, formats, and numbering — they are not repeated here.
@@ -9,8 +9,11 @@ Descend from intent toward the waterline. Produce durable, committed artifacts a
 - A raw problem/goal, or nothing → start at **Shape** (Direction).
 - An existing Direction → start at **Breakdown**.
 - A design decision surfacing during breakdown → **Design** (ADR).
+- A product Story or Epic (`docs/product/stories/…`, `docs/product/epics/…`) → the **seam** from `product-waterfall` `direct`. Read it and walk its `relates` up to the product Direction and the `docs/PRODUCT.md` entries it cites. If the Story needs design or several ordered Tasks, start at **Shape**; if it is already focused, go straight to **Breakdown** into Tasks.
 
 When invoked as a subroutine by `bottom-up`, the caller names the tier and hands you the gathered context — do not re-scan; author the one artifact requested and return.
+
+**Product check.** If `docs/PRODUCT.md` exists, read its Resolved Decisions and Product-level Out of Scope before authoring. These are above both waterlines (see `conventions` → Product layer). If the work would contradict one, **hard stop**: load `product-waterfall` `reflect` with the conflict as the signal, and resume only on its outcome. Never record an ADR that overrides a product decision.
 
 ## Descent guard
 
@@ -28,7 +31,9 @@ Interview until all five sections are precise, then write `docs/directions/NNN-s
 4. **Success signal** — how you'll know it worked. Observable, not aspirational.
 5. **Constraints** — what cannot change regardless of how it's solved.
 
-Optionally add **Risk** (one line: blast radius · rollback · cost-of-wrong) when the initiative is hard to reverse. Update `CONTEXT.md` when a domain term resolves. Frontmatter `relates: []`.
+Optionally add **Risk** (one line: blast radius · rollback · cost-of-wrong) when the initiative is hard to reverse. Update `docs/CONTEXT.md` when a domain term resolves. Frontmatter `relates: []`.
+
+**From a Story.** The Story has already settled the intent: don't re-interview it. Inherit its Outcome and Acceptance criteria as the Success signal, and its Out of scope (plus its parents' Out of scope) as Out of scope. Drill only the engineering sections (Appetite, Constraints, Risk) and any engineering scope the Story doesn't cover. Set `relates: [<story id>]`. If drilling shows that the Story's outcome or acceptance can't hold, stop and hand it to `direct` Refine. Don't redefine it here.
 
 ## Phase 2 — Breakdown (Epic? → Task)
 
@@ -46,9 +51,9 @@ Confirm the tier with the user before producing output.
 
 **Write**, one artifact at a time, confirming each:
 - Epic → `docs/epics/NNN-slug.md` — Goal · Scope · Out of scope · Tasks · Sequencing · Done when. `relates: [<direction id>]`.
-- Task → `docs/tasks/NNN-slug.md` — Goal · Notes. `relates: [<epic id or direction id>, <adr ids>]`.
+- Task → `docs/tasks/NNN-slug.md` — Goal · Notes. `relates: [<epic id or direction id>, <adr ids>]`. When breaking a Story down directly (no FW Direction), use `relates: [<story id>]`. The Story's Acceptance criteria must be covered by the union of its Tasks' Goals.
 
-Allocate the whole batch of numbers atomically (see `conventions` → Numbering). Update `CONTEXT.md` on resolved terms.
+Allocate the whole batch of numbers atomically (see `conventions` → Numbering). Update `docs/CONTEXT.md` on resolved terms.
 
 ## Phase 3 — Design (ADR)
 
@@ -57,7 +62,7 @@ Record an ADR **only** when all three hold:
 2. **Surprising without context** — a future reader will ask "why this way?"
 3. **A real trade-off** — there were genuine alternatives.
 
-Interview down each branch of the design tree, resolving dependencies one at a time. Challenge decisions that contradict a parent Direction or an existing ADR. When a term resolves, update `CONTEXT.md` inline.
+Interview down each branch of the design tree, resolving dependencies one at a time. Challenge decisions that contradict a parent Direction or an existing ADR. When a term resolves, update `docs/CONTEXT.md` inline.
 
 Write `docs/adr/NNNN-slug.md` — **Context · Decision · Consequences · Alternatives** (rejected options *and why*). Set `relates` to include the artifact that raised it; add `supersedes: [<adr id>]` when it replaces an earlier decision. The ADR sits at the waterline: this is the same file `bottom-up` appends to when code disagrees — author it so either entry direction reads cleanly.
 

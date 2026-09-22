@@ -39,4 +39,4 @@ Each file: frontmatter (`id` as filepath, `title`, `created`, `relates: [<input 
 
 Number sequentially from the highest existing file in the target directory.
 
-Update `CONTEXT.md` when a domain term is resolved. Glossary only — no implementation detail.
+Update `docs/CONTEXT.md` when a domain term is resolved. Glossary only — no implementation detail.

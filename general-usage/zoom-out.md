@@ -42,7 +42,7 @@ Do not get pulled into implementation details. If the conversation drifts toward
 When something looks risky, state the underlying assumption explicitly before assessing the risk. "This assumes X. If X is false, then Y."
 
 ### Surface conflicts with existing decisions
-When the plan contradicts or ignores an existing ADR or CONTEXT.md term, call it out directly.
+When the plan contradicts or ignores an existing ADR or docs/CONTEXT.md term, call it out directly.
 
 ## Ending the session
 

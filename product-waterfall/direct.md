@@ -1,43 +1,50 @@
 ---
 name: product-waterfall-direct
-description: Descends from product intent to the waterline — shapes a Direction doc checked against PRODUCT.md, then creates tracker artifacts (Initiative, Epic, Stories/Tasks). Stops at a placed, bounded unit rather than running into execution. The PM equivalent of facilitated-waterfall top-down.
+description: Descends from product intent to the product waterline — shapes a Direction checked against docs/PRODUCT.md, breaks it into Epics and Stories under docs/product/, and stops at a placed, bounded Story ready to hand to facilitated-waterfall top-down. Also refines an existing Epic or Story, including when bottom-up finds a Story that can't hold on contact with code. The PM equivalent of facilitated-waterfall top-down.
 ---
 
-Descend from intent toward the waterline. Produce a committed Direction doc and tracker artifacts, and **stop at a placed, bounded unit**. Do not cross into execution — sprint assignment and sub-tasks are downstream concerns. Read `conventions` for the waterline, PRODUCT.md structure, drilling technique, append-only rule, and confirm-before-write rule.
+Descend from intent toward the product waterline. Produce a committed Direction and the Epics/Stories beneath it, and **stop at a placed, bounded Story**. Do not cross into engineering: FW Directions, Tasks, ADRs, Plans, and code belong to `top-down` and `bottom-up`. Read `conventions` for the waterlines, the hooks, docs/PRODUCT.md structure, drilling technique, append-only rule, and confirm-before-write rule.
 
 **Find the entry.** Interpret the argument to locate the starting point and tier:
 
-- A raw idea, goal, or problem statement → start at **Shape** (Direction doc + Initiative)
-- An existing Initiative needing decomposition → start at **Breakdown** (Initiative → Epics)
-- An existing Epic needing decomposition → start at **Breakdown** (Epic → Stories/Tasks)
-- An existing ticket needing enrichment → **Refine**
-- Ambiguous → ask: "Are you shaping a new initiative, breaking work down, or refining an existing ticket?"
+- A raw idea, goal, or problem statement → **Shape** (Direction)
+- An existing Direction → **Breakdown** (Direction → Epics or Stories)
+- An existing Epic → **Breakdown** (Epic → Stories)
+- An existing Epic or Story needing enrichment or change → **Refine**
+- Loaded by `bottom-up` with a Story and an engineering finding → **Refine** in subroutine mode (see `conventions` → Hooks)
+- Ambiguous → ask: "Are you shaping a new Direction, breaking work down, or refining an existing Epic or Story?"
 
 ---
 
-## Phase 1 — Shape (Direction doc + Initiative)
+## Phase 1 — Shape (Direction)
 
-### 1a — Read PRODUCT.md
+### 1a — Read docs/PRODUCT.md
 
-Read `PRODUCT.md` at the workspace root before anything else. Extract: resolved decisions (hard constraints), product-level out of scope (hard constraints), current strategic themes (fit check), domain glossary (canonicalisation). If PRODUCT.md does not exist, proceed with explicit flags and recommend running `reflect bootstrap` first.
+Read `docs/PRODUCT.md` before anything else. Extract resolved decisions (hard constraints), product-level out of scope (hard constraints), current strategic themes (fit check), and the domain glossary (canonicalisation). If it doesn't exist, proceed with explicit flags and recommend running `reflect bootstrap` first.
 
 ### 1b — Dedup check
 
-Search for existing tracker Initiatives that overlap (JQL + full-text search). If a close match exists: "This looks similar to [ticket]: [summary]. Same initiative or distinct?" Same → go to Refine. Distinct → note as `Relates` candidate, proceed.
+Check whether an existing Direction overlaps:
+
+```sh
+grep -rH "^title:" docs/product/directions/ 2>/dev/null
+```
+
+Read only the bodies of plausible matches. If a close match exists, ask: "This looks similar to [id]: [title]. Same Direction or distinct?" Same → go to Breakdown or Refine on it. Distinct → note it for `relates`, proceed.
 
 ### 1c — Alignment check
 
 Before drilling, present the alignment picture:
 
 > "Before we shape this, here's how it sits against your current product direction:
-> Active themes: [from PRODUCT.md]
-> Relevant resolved decisions: [any that touch the stated problem]
-> Potential scope conflicts: [any product-level out of scope the problem might touch]
+> Active themes: [from docs/PRODUCT.md]
+> Relevant resolved decisions: [D-ids that touch the stated problem]
+> Potential scope conflicts: [X-ids the problem might touch]
 > Does this complement an active theme, or is it a new one?"
 
 If it conflicts with a resolved decision or product-level out of scope: **hard stop**.
 
-> "This conflicts with a settled product decision: [decision]. To proceed, use `reflect signal` to process the signal driving this and decide whether the decision should be superseded. Do not create a ticket that contradicts settled product direction."
+> "This conflicts with a settled product decision: [D-NNN / X-NNN]. To proceed, use `reflect` to process the signal driving this and decide whether the decision should be superseded. I won't write a Direction that contradicts settled product direction."
 
 ### 1d — Drill the Direction
 
@@ -47,115 +54,121 @@ Interview the PM through each section using the drilling technique from `convent
 
 **Appetite** — "How much complexity and effort is this worth? A budget, not an estimate." Probe: "1-week spike, quarter-long, or somewhere between?"
 
-**Out of Scope** — "What would a naive PM or engineer build that you don't want?" Require minimum two explicit exclusions. "Nothing is out of scope" is not accepted — probe until real exclusions emerge. Cross-reference with PRODUCT.md product-level out of scope.
+**Out of Scope** — "What would a naive PM or engineer build that you don't want?" Require at least two explicit exclusions; don't accept "nothing is out of scope". Cross-reference product-level out of scope.
 
 **Success Signal** — "How will you know it worked? Observable outcome, not aspiration." Reject "users are happier." Accept "time-to-first-payment drops below 5 minutes."
 
-**Constraints** — "What cannot change regardless of how this is solved?" (regulatory, API contracts, timeline, team size)
+**Constraints** — "What cannot change regardless of how this is solved?" (regulatory, contracts, timeline, team size). Cite the D-/X-ids that bind it.
 
-### 1e — Write the Direction doc
+### 1e — Write the Direction
 
-Number sequentially from the highest existing file in `docs/product/directions/`. Write `docs/product/directions/NNN-slug.md`:
+Number sequentially from the highest file in `docs/product/directions/`. Write `docs/product/directions/NNN-slug.md`:
 
-**Frontmatter:** `id`, `title`, `created`, `ticket:` (blank until tracker key known), `relates: []`
+**Frontmatter:** `id`, `title`, `created`, `relates: [docs/PRODUCT.md#D-NNN, …]` (the entries that constrain it, plus any related Direction from 1b). Optional `tracker:`.
 
 **Body:** Problem · Appetite · Out of Scope · Success Signal · Constraints
 
-Present the full draft. Confirm before writing. The Direction doc is the commitment artifact — it is append-only once written.
+Present the full draft and confirm before writing. The Direction is a commitment artifact, so it's append-only once written.
 
-If a new product term resolved during drilling: "Shall I add '[term]' to the PRODUCT.md glossary? [yes / skip]"
+If a product term resolved during drilling: "Shall I add '[term]' to the docs/PRODUCT.md glossary? [yes / skip]" First check that docs/CONTEXT.md doesn't already define it.
 
-### 1f — Create the tracker Initiative
+Offer to log it under Current Strategic Themes: "Shall I add this Direction to Current Strategic Themes in docs/PRODUCT.md? [yes / skip]"
 
-Compose the Initiative from the Direction doc:
-
-- **Summary:** concise problem-oriented title
-- **Body:** Context (link to Direction doc) · Requirements (appetite + constraints) · Acceptance Criteria (success signal) · Out of Scope (minimum two) · Technical Notes (N/A) · Dependencies (Relates candidates from dedup)
-- **Labels:** confirm with the PM — never silently infer at Initiative level
-
-Present the full draft. Confirm before creating.
-
-On confirm: create the Initiative in the tracker. Update the Direction doc's `ticket:` frontmatter with the created key.
-
-Offer to add this Initiative to PRODUCT.md Current Strategic Themes: "Shall I log this under Current Strategic Themes in PRODUCT.md? [yes / skip]"
-
-Then: "Direction doc written and Initiative created. Use `direct` with the Epic breakdown option when you're ready to define Epics — or stop here." Do not auto-chain.
+Then: "Direction written. Run `direct` on it when you're ready to break it down, or stop here." Do not auto-chain.
 
 ---
 
-## Phase 2 — Breakdown (Initiative → Epics, or Epic → Stories/Tasks)
+## Phase 2 — Breakdown (Direction → Epics? → Stories)
 
-### 2a — Identify parent and tier
+### 2a — Read the governing context
 
-Fetch the parent ticket. Validate the type — Initiative → Epics tier; Epic → Stories/Tasks tier. If the user provides a Story/Task, redirect: "Use a sub-task breakdown tool for that level."
+Read the parent (Direction or Epic) fully; it's the scope authority for the session. Walk its `relates` up to the Direction and to the docs/PRODUCT.md entries it cites. Resolved decisions and product-level out of scope constrain every unit proposed.
 
-### 2b — Read the governing Direction doc
+### 2b — Check for existing children
 
-Find the Direction doc whose `ticket:` frontmatter matches the Initiative key. Read it fully — this is the scope authority for the session. If none exists, warn and proceed with the ticket description as the scope reference.
+```sh
+grep -rlH "<parent id>" docs/product/epics/ docs/product/stories/ 2>/dev/null
+```
 
-Read PRODUCT.md resolved decisions and product-level out of scope. These constrain every unit proposed.
+If children exist, present them and ask: "Adding more, or done?"
 
-### 2c — Check for existing children
+### 2c — Decide the tier and propose the shape
 
-Fetch existing children. If present: present them and ask "Adding more, or done?"
+Recommend a tier:
 
-### 2d — Propose the shape
+- **Direction → Stories directly** when the Direction is focused.
+- **Direction → Epics → Stories** only when the work spans several capabilities that each need a manifest.
 
-Before drilling individual units, propose the full breakdown shape to the PM:
+Propose the whole shape as one-line descriptions: 2–5 Epics, or 3–7 Stories. A Story is something a user can see, do, or benefit from. Plumbing, migrations, and infrastructure are **not** Stories; note them as engineering concerns for the Story they serve, and `top-down` will make them Tasks. Confirm the shape before drilling units.
 
-- Initiative → Epics: propose 2–5 Epics as one-line capability descriptions
-- Epic → Stories/Tasks: propose 3–7 Stories/Tasks
+### 2d — Drill each unit (one at a time)
 
-Story vs. Task heuristic: user can see/do/benefit from it → Story; infrastructure/migration/plumbing → Task.
+**Epic:** Capability (noun phrase: what exists when done) · Scope · Out of Scope (at least two) · Success Signal · Stories manifest with `Depends on`
 
-Confirm the shape before drilling units.
+**Story:** Outcome (single testable user outcome; if it contains "and", split it) · Acceptance Criteria (observable, demonstrable by a user or a check) · Out of Scope
 
-### 2e — Drill each unit (one at a time)
+Challenge each against the parent's Out of Scope and against docs/PRODUCT.md.
 
-**For an Epic:** Capability (noun phrase — what exists when done) · Scope · Out of Scope (min two) · Success Signal · Dependencies on siblings
+### 2e — Draft, confirm, write
 
-**For a Story:** User outcome (single testable outcome — if it has "and" it's two Stories) · Acceptance Criteria (observable, demonstrable) · Out of Scope
+Allocate the whole batch of numbers atomically. For each unit, present the full draft: "Confirm this one? [yes / edit / skip / cancel all]". On yes, write:
 
-**For a Task:** Goal (what system state changes) · Acceptance Criteria (verifiable without user interaction) · Dependencies
+- Epic → `docs/product/epics/NNN-slug.md`, `relates: [<direction id>]`
+- Story → `docs/product/stories/NNN-slug.md`, `relates: [<epic id or direction id>]`
 
-### 2f — Draft and confirm each unit
+If the PM gets impatient, offer: "Want me to draft the remaining N units as a batch for review?" Confirm the batch, then write sequentially.
 
-After drilling: present the full ticket draft. "Confirm this one? [yes / edit / skip / cancel all]"
+Dependency edges between Stories go **only** in the Epic's Stories manifest and Sequencing. Never put them on the Stories themselves.
 
-On confirm: create the ticket in the tracker with the parent link and inherited labels.
+### 2f — Hand off at the seam
 
-If the PM gets impatient: "Want me to draft the remaining N units as a batch for review?" Shift to batch-confirm but create sequentially after confirmation.
+Stop. Stories are the descent guard's floor. Offer:
 
-### 2g — Link dependencies
+> "N Stories written. Each is ready for engineering: run `top-down` on a Story to shape its FW Direction or Tasks. Want to start with [first in Sequencing]?"
 
-After all units are created, present identified dependency edges and offer to create Blocks links.
+Do not start `top-down` without a yes.
 
 ---
 
-## Phase 3 — Refine (enrich an existing ticket)
+## Phase 3 — Refine (enrich or change an Epic or Story)
 
-### 3a — Identify the ticket
+### 3a — Identify and situate
 
-Parse the user input for a ticket key. Fetch it. Walk up the parent chain to find the governing Direction doc. Check the parent status — if Done/Closed/Cancelled, warn before proceeding. Check if the parent theme is still active in PRODUCT.md Current Strategic Themes.
+Read the Epic or Story. Walk `relates` up to its Direction and cited docs/PRODUCT.md entries. Check whether its Direction's theme is still active. Then check whether anything already builds on it:
+
+```sh
+grep -rlH "<story or epic id>" docs/ 2>/dev/null
+```
+
+If any FW Direction, Task, or child Story relates to it, it's **picked up**. Changes must be recorded as Revisions (see `conventions` → Append-only).
 
 ### 3b — Assess gaps
 
-Compare the ticket body against the standard format (Context · Requirements · Acceptance Criteria · Out of Scope · Technical Notes · Dependencies). Classify each section as Missing, Weak, or Complete. Present as a table. Ask to proceed.
+Compare against the format in `conventions`. Classify each section as Missing, Weak, or Complete, and present the result as a table. When loaded by `bottom-up`, also present the engineering finding: which acceptance criterion or scope line can't hold, and why.
 
-### 3c — Fill gaps
+If the needed change would contradict a resolved decision or product-level exclusion, stop. It isn't a Refine. Redirect to `reflect`.
 
-Use the drilling technique for each weak or missing section. Acceptance Criteria must be observable. Out of Scope needs minimum two exclusions for Initiatives/Epics. Technical Notes: if unknown, write "Needs engineering input before implementation" — never leave empty or invented.
+### 3c — Drill and fill
+
+Use the drilling technique for each weak or missing section, or for the contested one. Acceptance Criteria must be observable. Epic Out of Scope needs at least two exclusions. Never invent engineering detail; that's `top-down`'s job.
 
 ### 3d — Draft and apply
 
-Show Added, Changed, Unchanged, then the full updated body. Confirm before updating the ticket.
+Show Added, Changed, Unchanged, then the full result. Confirm before writing.
+
+- **Not picked up** → edit in place.
+- **Picked up** → leave the original sections intact and append under `## Revisions`: `- YYYY-MM-DD — [what changed] — [why; cite the probe or finding]`. Then list the FW artifacts that relate to it and recommend `bottom-up` on each one the change affects.
+
+In subroutine mode, return the outcome to `bottom-up`: the Revision text, or "Story holds; find a mechanism that meets it."
 
 ---
 
 ## Rules
 
-- Read PRODUCT.md before authoring anything. No exceptions.
-- Hard-stop if a new Direction conflicts with a resolved product decision. Redirect to `reflect`.
-- Direction doc first, tracker ticket second. Never create a tracker artifact without a written Direction doc (or an explicit PM override for Epics/Stories under an existing Direction).
-- Do not auto-chain between phases. Each phase is a deliberate invocation.
-- Confirm before every write — Direction doc, tracker ticket, PRODUCT.md glossary entry, tracker link.
+- Read docs/PRODUCT.md before authoring anything. No exceptions.
+- Hard-stop if a Direction, Epic, or Story would contradict a resolved decision or product-level exclusion. Redirect to `reflect`.
+- Direction first. Never write an Epic or Story without a Direction above it.
+- Stop at the Story. Never write FW Directions, Tasks, ADRs, Plans, or code; hand off to `top-down`.
+- Never call an external tracker. `tracker:` is an optional link only.
+- Do not auto-chain between phases or into `top-down`. Each is a deliberate invocation.
+- Confirm before every write: Direction, Epic, Story, Revision, docs/PRODUCT.md entry.

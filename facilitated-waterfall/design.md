@@ -29,13 +29,13 @@ Ask one question at a time. Give your recommended answer before waiting for a re
 - **Resolve inline** — capture decisions as they happen, don't batch.
 
 ### Challenge against the glossary
-When the user uses a term that conflicts with `CONTEXT.md`, call it out immediately. "Your glossary defines X as Y, but you seem to mean Z — which is it?"
+When the user uses a term that conflicts with `docs/CONTEXT.md`, call it out immediately. "Your glossary defines X as Y, but you seem to mean Z — which is it?"
 
 ### Cross-reference with code
 When the user states how something works, check whether the code agrees. Surface contradictions.
 
-### Update CONTEXT.md inline
-When a term is resolved, update `CONTEXT.md` immediately. Glossary only — no implementation details.
+### Update docs/CONTEXT.md inline
+When a term is resolved, update `docs/CONTEXT.md` immediately. Glossary only — no implementation details.
 
 ### Offer ADRs sparingly
 Only when all three are true:

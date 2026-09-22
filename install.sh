@@ -208,6 +208,22 @@ if [ -n "${DSH_HOME:-}" ] \
     _has_dsh=1
 fi
 
+# Explicit targets (e.g. `./install.sh claude opencode dsh`) replace detection:
+# only the named clients are installed, whether or not they were detected.
+if [ "$#" -gt 0 ]; then
+    _has_claude=0; _has_cursor=0; _has_opencode=0; _has_mirai=0; _has_dsh=0
+    for t in "$@"; do
+        case "$t" in
+            claude)   _has_claude=1 ;;
+            cursor)   _has_cursor=1 ;;
+            opencode) _has_opencode=1 ;;
+            mirai)    _has_mirai=1 ;;
+            dsh)      _has_dsh=1 ;;
+            *) _warn "Unknown target '$t' (expected: claude cursor opencode mirai dsh)"; exit 1 ;;
+        esac
+    done
+fi
+
 if [ "$_has_claude" = "0" ] && [ "$_has_cursor" = "0" ] && [ "$_has_opencode" = "0" ] \
     && [ "$_has_mirai" = "0" ] && [ "$_has_dsh" = "0" ]; then
     _warn "No supported clients detected (Claude Code, VS Code, Cursor, OpenCode, Mirai, DSH) — nothing installed"
@@ -219,6 +235,8 @@ fi
 for dir in "$REPO_DIR"/*/; do
     [ -d "$dir" ] || continue
     namespace="$(basename "$dir")"
+    # Only directories holding skill files are namespaces (skips docs/ etc.)
+    compgen -G "$dir*.md" >/dev/null || continue
 
     # Claude Code + VS Code extension: ~/.claude/commands/<namespace>/<skill>.md → /namespace:skill
     if [ "$_has_claude" = "1" ]; then

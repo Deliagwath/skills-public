@@ -15,21 +15,28 @@ The waterfall is a pipeline: Direction → Epic → Task → Plan → Code. Work
 
 ```sh
 # id + relates for every artifact, no bodies
-for d in directions epics tasks plans; do
+for d in product/directions product/epics product/stories directions epics tasks plans; do
   echo "=== $d ==="
   grep -rH "^id:\|^relates:" docs/$d/ 2>/dev/null
 done
+echo "=== open probes ==="
+grep -rlH "^status: open" docs/probes/ docs/product/probes/ 2>/dev/null
 echo "=== ledger ==="
 cat docs/plans/LEDGER.md 2>/dev/null
 git log --oneline -20
 ```
 
-If `docs/directions/` is empty or missing, this is a greenfield project — skip to Phase 4 with "no directions."
+If `docs/directions/` and `docs/product/` are both empty or missing, this is a greenfield project — skip to Phase 4 with "no directions."
+
+**Product layer.** When `docs/product/` exists, the pipeline starts higher: product Direction → Epic? → Story → (seam) → FW Direction/Task → Plan → Code. Product stages are shallower than every FW stage.
 
 ## Phase 2 — Find orphans (cheap, no body reads)
 
 From the grep output alone, compute the orphans at each stage by joining `relates` links:
 
+- **Childless product Directions** — no product Epic's or Story's `relates` contains its id.
+- **Unengineered Stories** — no FW Direction's or Task's `relates` contains the Story's id. This is the hand-off frontier.
+- **Open probes** — any `status: open` probe, in either layer. Resuming it ranks above starting new work in the same area.
 - **Childless Directions** — no Epic's `relates` contains this Direction's id.
 - **Childless Epics** — no Task's `relates` contains this Epic's id.
 - **Unplanned Tasks** — no Plan's `relates` contains this Task's id.
@@ -57,6 +64,10 @@ Present three next actions, ranked best-first. Each maps a frontier gap to the s
 | Frontier | Action |
 |----------|--------|
 | No directions | Propose a problem statement from `README.md` (first 30 lines); `/shape` |
+| `docs/product/` exists but no `docs/PRODUCT.md` | `reflect bootstrap` |
+| Open probe | Resume it: `bottom-up` (`docs/probes/`) or `reflect` (`docs/product/probes/`) |
+| Product Direction with no Epics/Stories | `direct` Breakdown on that Direction |
+| Story with no FW Direction/Task | `top-down` on that Story |
 | Direction with no Epics | `/breakdown` on that Direction |
 | Epic with no Tasks | `/breakdown` on that Epic |
 | Task with no Plan | `/plan` on that Task |

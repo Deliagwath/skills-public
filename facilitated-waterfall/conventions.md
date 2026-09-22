@@ -37,6 +37,22 @@ Two hard rules follow, one per direction:
 - **Descent guard (top-down).** A descending change may **not** run straight into implementation. It stops at the underside of the line and hands off a *placed, bounded unit* (a Task, optionally grouped in an Epic).
 - **Ascent guard (bottom-up).** An ascending change may **not** overturn an above-the-line commitment (ADR decision, Direction constraint/scope) without surfacing the trade-off and recording **accepted** supersession. If the trade-off isn't accepted, the fix is wrong — find a below-the-line mechanism that honors the decision.
 
+## Product layer (when present)
+
+If the project also runs `product-waterfall` (`docs/PRODUCT.md`, `docs/product/`), a second waterline stacks **above** this one, and the product **Story** is the seam: mechanism to the PM, commitment to engineering. See `product-waterfall` `conventions` for the full picture.
+
+```
+docs/PRODUCT.md (D-/X-ids) ═══ PRODUCT WATERLINE ═══ product Direction → Epic? → Story
+   ┄┄ seam: Story ┄┄  FW Direction · ADR ═══ ENGINEERING WATERLINE ═══ architecture → code
+```
+
+- **Entry from above.** `top-down` accepts a Story (or product Epic) as input; the FW Direction or Tasks it writes carry the Story's id in `relates`.
+- **Product commitments bind engineering.** A Story's Outcome, Acceptance criteria, and Out of scope, its parents' Out of scope, and every `docs/PRODUCT.md` resolved decision (D-NNN) and product-level exclusion (X-NNN) are above-the-line constraints for any FW artifact beneath them.
+- **An ADR never supersedes a product commitment.** When one must move, hand off: a Story → `direct` Refine; a D-/X-entry → `reflect`. Both always involve the PM.
+- **Two glossaries.** `docs/PRODUCT.md` holds product terms; `docs/CONTEXT.md` holds engineering terms. A term lives in exactly one — check the other before appending; a CONTEXT.md entry that realises a product term names it rather than redefining it.
+
+Without a product layer, none of this applies — FW works standalone.
+
 ## Drilling technique
 
 Every authoring stage shares this. Ask one question at a time. Give your recommended answer before waiting for a response.
@@ -46,7 +62,7 @@ Every authoring stage shares this. Ask one question at a time. Give your recomme
 - **Push back** — do not accept the first answer without testing it. A decision is resolved when it holds under challenge, not when it's first stated.
 - **Resolve inline** — capture decisions as they happen, don't batch.
 - **Cross-reference with code** — when the user states how something works, check whether the code agrees. Surface contradictions; the disagreement is itself a finding.
-- **Challenge against the glossary** — when a term conflicts with `CONTEXT.md`, call it out: "Your glossary defines X as Y, but you seem to mean Z — which is it?"
+- **Challenge against the glossary** — when a term conflicts with `docs/CONTEXT.md`, call it out: "Your glossary defines X as Y, but you seem to mean Z — which is it?"
 
 If a question can be answered by exploring the codebase, explore instead of asking.
 
@@ -56,7 +72,7 @@ Artifacts are not edited in place once they record a decision. A changed decisio
 
 ## Artifact formats
 
-Every file carries frontmatter with at least `id`, `title`, `created`, and `relates: [...]`. `relates` links point **upward** (Epic→Direction, Task→Epic/Direction, Plan→Task, ADR→artifact) and are fixed at creation.
+Every file carries frontmatter with at least `id`, `title`, `created`, and `relates: [...]`. `relates` links point **upward** (Epic→Direction, Task→Epic/Direction, Plan→Task, ADR→artifact) and are fixed at creation. With a product layer, an FW Direction or Task may also point up across the seam to a Story (`docs/product/stories/NNN-slug.md`).
 
 ```
 docs/directions/NNN-slug.md   Problem · Appetite · Out of scope · Success signal · Constraints · Risk?
@@ -65,7 +81,7 @@ docs/tasks/NNN-slug.md        Goal · Notes
 docs/plans/NNN-slug.md        Context · Steps · Verification · Risk
 docs/adr/NNNN-slug.md         Context · Decision · Consequences · Alternatives   (optional supersedes)
 docs/probes/<id>-slug.md      Trigger · Governing docs · Findings · Open questions · Deliberation · Risk · Reconciliation
-CONTEXT.md                    Glossary of resolved domain terms — no implementation detail
+docs/CONTEXT.md               Glossary of resolved domain terms — no implementation detail
 ```
 
 - **Epic (optional).** The **Tasks** section is a manifest table of children with a `Depends on` column; **Sequencing** is the derived order (or "parallel"). Dependency edges live **only here** — do not duplicate `Depends on / Blocks / Order:` onto individual Tasks.
@@ -91,15 +107,16 @@ Read-only. Invoke directly to check whether what was built stayed inside what wa
 
 **Waterline & probe checks (system-specific):**
 - **Waterline crossed without acceptance** — a probe (or commit) that overturns an ADR/Direction commitment with no recorded accepted trade-off. This is a violation.
-- **Stale glossary** — a `CONTEXT.md` term whose definition no longer matches the code it pins to (e.g. a named field/module that moved or changed shape).
+- **Stale glossary** — a `docs/CONTEXT.md` term whose definition no longer matches the code it pins to (e.g. a named field/module that moved or changed shape).
 - **Open-probe drift** — a probe left `open` well past activity, or closed without its Reconciliation gate satisfied (see `bottom-up`).
+- **Product line crossed** (product layer only) — an ADR, Direction, or code that changes a governing Story's Outcome/Acceptance or contradicts a `docs/PRODUCT.md` D-/X-entry, with no matching Story Revision or `reflect` probe. This is a violation.
 
 **Report**, violations first, grouped by severity:
 
 ```
 docs/adr/0004-no-sync-io.md    VIOLATED    src/cache.ts:88 blocking read in request path
 docs/probes/2026-08-17-x.md    VIOLATED    supersedes adr/0008 with no accepted trade-off
-CONTEXT.md → "usage"           STALE       pins app/lib/llm/usage.ts; file is now canonical-usage.ts
+docs/CONTEXT.md → "usage"           STALE       pins app/lib/llm/usage.ts; file is now canonical-usage.ts
 docs/plans/0005-auth.md        UNVERIFIED  `npm run e2e:auth` fails (2 specs)
 docs/directions/001.md         CONFORMS    no scope-creep against Out of scope
 ```

@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `product-waterfall/` made platform-agnostic and hooked into facilitated-waterfall.
+  - All product artifacts are files under `docs/`: `docs/PRODUCT.md`, `docs/product/{directions,epics,stories,probes}/`. Tracker calls (JQL, ticket creation, labels) removed; an optional `tracker:` frontmatter key links out instead.
+  - Resolved decisions and product-level exclusions get stable ids (`D-NNN`, `X-NNN`) that artifacts cite in `relates` as `docs/PRODUCT.md#D-NNN`.
+  - The two waterlines stack, with the Story as the seam. `direct` stops at Stories and offers `top-down`. `top-down` accepts a Story as entry and hard-stops into `reflect` on a PRODUCT.md conflict. `bottom-up` climbs past the engineering line and hands product-level conflicts to `direct` Refine or `reflect`. `reflect` gains a Propagate phase that lists affected artifacts in both layers.
+  - Stories/Epics are editable in place until something relates to them, then change through a `Revisions` section.
+  - `conventions` gains a product-alignment audit; FW `conventions` audit flags engineering changes that cross the product line.
+  - `what-next` surveys the product layer: childless product Directions, Stories with no FW work, and open probes in either layer.
+
 - `facilitated-waterfall/` namespace: an append-only documentation system implementing the Direction → Epic → Task → Plan → Code pipeline.
   - `shape` — define a Direction (Problem · Appetite · Out of scope · Success signal · Constraints).
   - `breakdown` — decompose a Direction into Epics, or an Epic into Tasks.
