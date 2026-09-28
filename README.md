@@ -129,7 +129,7 @@ Every durable file carries frontmatter with at least `id`, `title`, `created`, a
 ./install.sh
 ```
 
-`install.sh` detects which clients are present and installs into each. It is idempotent — safe to re-run.
+Each skill is one folder, `<namespace>/<skill>/SKILL.md`: the layout every client below loads, and the one Paperclip's skill library imports in place. `install.sh` detects which clients are present and installs into each. It is idempotent — safe to re-run.
 
 To install into specific clients only, name them — this replaces detection:
 
@@ -139,12 +139,14 @@ To install into specific clients only, name them — this replaces detection:
 
 | Client | Destination | Invocation |
 |--------|-------------|------------|
-| Claude Code / VS Code extension | `~/.claude/commands/<namespace>/<skill>.md` (symlinked) | `/<namespace>:<skill>` |
-| Cursor | `~/.cursor/commands/<namespace>-<skill>.md` (symlinked) | `/<namespace>-<skill>` |
+| Claude Code / VS Code extension | `~/.claude/commands/<namespace>/<skill>.md` (symlink to `SKILL.md`) | `/<namespace>:<skill>` |
+| Cursor | `~/.cursor/commands/<namespace>-<skill>.md` (symlink to `SKILL.md`) | `/<namespace>-<skill>` |
 | OpenCode | `~/.config/opencode/skills/<namespace>-<skill>/SKILL.md` (copied) | `<namespace>-<skill>` |
 | Mirai | `~/.mirai/skills/<namespace>-<skill>/SKILL.md` (copied) | `<namespace>-<skill>` |
-| DeepSeek Harness | `$DSH_HOME/skills/<namespace>-<skill>/SKILL.md` (copied) | `<namespace>-<skill>` |
+| DeepSeek Harness | `$DSH_HOME/skills/<namespace>-<skill>/` (symlink to the skill folder) | `<namespace>-<skill>` |
 
+> Symlinked clients read this repo as it stands: an edit is live with no reinstall. OpenCode and Mirai get copies, because neither is verified to follow a linked skill folder; re-run `install.sh` after an edit for them.
+>
 > OpenCode, Mirai and DSH require YAML frontmatter (`name` + `description`) in every skill; the installer validates this and refuses to install a namespace with any skill missing it.
 
 **DSH and multiple harness homes.** DSH scans `$DSH_HOME/skills` (per home) before `~/.agents/skills` (shared by every home on the machine). The installer writes the per-home root and resolves the home the way DSH does — `$DSH_HOME`, else `~/.dsh` — so a box running more than one harness chooses which one gets the skills by choosing the home for the run:

@@ -44,14 +44,14 @@ _validate_opencode_skills() {
     local valid=0
     local missing_files=""
 
-    for f in "$dir"*.md; do
+    for f in "$dir"*/SKILL.md; do
         [ -f "$f" ] || continue
         if _has_skill_frontmatter "$f"; then
             valid=$((valid + 1))
         else
             missing=$((missing + 1))
             missing_files="$missing_files
-    - $(basename "$f")"
+    - $(basename "$(dirname "$f")")/SKILL.md"
         fi
     done
 
@@ -77,9 +77,9 @@ _install_opencode_skills() {
 
     mkdir -p "$skills_dir"
 
-    for f in "$dir"*.md; do
+    for f in "$dir"*/SKILL.md; do
         [ -f "$f" ] || continue
-        skill_name="$(basename "$f" .md)"
+        skill_name="$(basename "$(dirname "$f")")"
         # Use namespace-skill prefix to avoid collisions
         skill_slug="${namespace}-${skill_name}"
         target_dir="$skills_dir/$skill_slug"
@@ -105,9 +105,9 @@ _install_mirai_skills() {
 
     mkdir -p "$skills_dir"
 
-    for f in "$dir"*.md; do
+    for f in "$dir"*/SKILL.md; do
         [ -f "$f" ] || continue
-        skill_name="$(basename "$f" .md)"
+        skill_name="$(basename "$(dirname "$f")")"
         # Use namespace-skill prefix to avoid collisions
         skill_slug="${namespace}-${skill_name}"
         target_dir="$skills_dir/$skill_slug"
@@ -133,10 +133,10 @@ _install_mirai_skills() {
 # non-default home by setting it for the run:
 #   DSH_HOME=~/.dsh-harness ./install.sh
 #
-# DSH accepts both <name>/SKILL.md bundles and flat <name>.md files. We write
-# bundles, matching the OpenCode and Mirai branches — a bundle directory is also
-# what DSH reports as `resourceBase`, so a skill that grows sibling files later
-# can resolve them relatively without moving.
+# DSH accepts both <name>/SKILL.md bundles and flat <name>.md files. We link
+# each skill's bundle folder from this repo, so an edit here is live in DSH with
+# no reinstall. The bundle directory is also what DSH reports as `resourceBase`,
+# so a skill that grows sibling files can resolve them relatively.
 #
 # Skill names must be kebab-case and are global within a root, which is why the
 # namespace prefix is applied here as it is everywhere else.
@@ -152,18 +152,20 @@ _install_dsh_skills() {
 
     mkdir -p "$skills_dir"
 
-    for f in "$dir"*.md; do
+    for f in "$dir"*/SKILL.md; do
         [ -f "$f" ] || continue
-        skill_name="$(basename "$f" .md)"
+        skill_name="$(basename "$(dirname "$f")")"
         skill_slug="${namespace}-${skill_name}"
         target_dir="$skills_dir/$skill_slug"
-        mkdir -p "$target_dir"
-        # Copy (not symlink) to ensure the file is self-contained
-        cp -f "$f" "$target_dir/SKILL.md"
+        # Link the folder, so DSH reads the repo as it stands (DSH follows a
+        # directory link in a skill root). A copy left by an older install is
+        # replaced.
+        [ -L "$target_dir" ] || rm -rf "$target_dir"
+        ln -sfn "$(dirname "$f")" "$target_dir"
         count=$((count + 1))
     done
 
-    _ok "DSH          [$namespace]: $count skills → $skills_dir/ (as $namespace-<skill>/SKILL.md)"
+    _ok "DSH          [$namespace]: $count skills → $skills_dir/ (as $namespace-<skill>/ → repo folder)"
 }
 
 # --- Client detection ---
@@ -235,17 +237,17 @@ fi
 for dir in "$REPO_DIR"/*/; do
     [ -d "$dir" ] || continue
     namespace="$(basename "$dir")"
-    # Only directories holding skill files are namespaces (skips docs/ etc.)
-    compgen -G "$dir*.md" >/dev/null || continue
+    # Only directories holding <skill>/SKILL.md folders are namespaces (skips docs/ etc.)
+    compgen -G "$dir*/SKILL.md" >/dev/null || continue
 
     # Claude Code + VS Code extension: ~/.claude/commands/<namespace>/<skill>.md → /namespace:skill
     if [ "$_has_claude" = "1" ]; then
         target="$HOME/.claude/commands/$namespace"
         mkdir -p "$target"
         count=0
-        for f in "$dir"*.md; do
+        for f in "$dir"*/SKILL.md; do
             [ -f "$f" ] || continue
-            ln -sf "$f" "$target/$(basename "$f")"
+            ln -sf "$f" "$target/$(basename "$(dirname "$f")").md"
             count=$((count + 1))
         done
         _ok "Claude Code / VS Code [$namespace]: $count skills → ~/.claude/commands/$namespace/"
@@ -256,9 +258,9 @@ for dir in "$REPO_DIR"/*/; do
         target="$HOME/.cursor/commands"
         mkdir -p "$target"
         count=0
-        for f in "$dir"*.md; do
+        for f in "$dir"*/SKILL.md; do
             [ -f "$f" ] || continue
-            ln -sf "$f" "$target/${namespace}-$(basename "$f")"
+            ln -sf "$f" "$target/${namespace}-$(basename "$(dirname "$f")").md"
             count=$((count + 1))
         done
         _ok "Cursor       [$namespace]: $count skills → ~/.cursor/commands/ (prefix: ${namespace}-)"
@@ -283,7 +285,7 @@ for dir in "$REPO_DIR"/*/; do
         _install_mirai_skills "$dir" "$namespace"
     fi
 
-    # DSH: copy each skill as $DSH_HOME/skills/<namespace>-<skill>/SKILL.md
+    # DSH: link each skill folder as $DSH_HOME/skills/<namespace>-<skill>/
     # Reuses OpenCode's frontmatter validation — DSH's local provider requires
     # name + description too, and drops a skill that parses without them.
     if [ "$_has_dsh" = "1" ]; then
