@@ -183,6 +183,8 @@ if CTAGS=$(find_ctags); then MODE=ctags; else MODE=grep CTAGS=; fi
 AWK_FMLIST='
 function emit(v) {
 	gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", v)
+	# A link is one token. Prose after it, `path (rules 4-6: ...)`, is a note.
+	sub(/[ \t].*$/, "", v); gsub(/["\047]+$/, "", v)
 	if (v != "") print FILENAME "\t" v
 }
 FNR == 1 { infm = ($0 == "---"); inkey = 0; if (!infm) nextfile; next }
@@ -518,7 +520,8 @@ render() {
 		if (lk && !sealed) printf "lookup    %d links in %d sealed or research docs (--sealed lists them)\n", lkh, lk
 	}
 	# The handbook entries linked into this answer: each linked line counts the
-	# "### " entry that holds it, once. Their size is held against a quarter of
+	# innermost "### " (or "## ", in a handbook written without areas) entry that
+	# holds it, once. Their size is held against a quarter of
 	# the role share (D20); over it, the cut test is due at the next close.
 	function handbook(  l, a, f, i, n, e, eb, hit, ne, nf, b, hshare) {
 		while ((getline l < hbf) > 0) { split(l, a, "\t"); want[a[1], a[2]] = 1; if (!(a[1] in hf)) { hf[a[1]] = 1; fo[++nf] = a[1] } }
@@ -527,7 +530,7 @@ render() {
 			f = fo[i]; n = 0; e = 0; eb = 0; hit = 0
 			while ((getline l < f) > 0) {
 				n++
-				if (l ~ /^#{1,3} /) { if (hit) { ne++; b += eb }; e = (l ~ /^### /); eb = 0; hit = 0 }
+				if (l ~ /^#{1,3} /) { if (hit) { ne++; b += eb }; e = (l ~ /^##+ /); eb = 0; hit = 0 }
 				if (e) { eb += length(l) + 1; if ((f, n) in want) hit = 1 }
 			}
 			if (hit) { ne++; b += eb }
@@ -785,16 +788,56 @@ q_unresolved() {
 		}' "$T/found" "$T/cand"
 }
 
+# A `relates` entry that is not a path is an artifact id: `"084"`, `"epic-013"`,
+# `"adr-0034"`. It resolves to the doc whose frontmatter `id:` (or file name) is
+# exactly that. A bare number can name a Direction, a Task and a Plan at once, so
+# several matches are narrowed by the upward rule (Plan -> Task, Task -> Epic or
+# Direction, Epic -> Direction), from the linking doc's directory. Still more
+# than one is reported as ambiguous, never picked.
+resolve_link() { # resolve_link <link> <linking doc or empty>
+	[ -f "$1" ] && { printf '%s\n' "$1"; return 0; }
+	grep '\.md$' "$STATE/listing" >"$T/mdl" || :
+	xfiles "$T/mdl" awk -v want="$1" '
+		FNR == 1 { infm = ($0 == "---"); b = FILENAME; sub(/.*\//, "", b); sub(/\.md$/, "", b)
+			if (b == want) print FILENAME; if (!infm) nextfile; next }
+		infm && $0 == "---" { nextfile }
+		infm && /^id:/ { v = $0; sub(/^id:[ \t]*/, "", v); gsub(/^["\047]|["\047][ \t]*$/, "", v)
+			if (v == want) print FILENAME; nextfile }' 2>/dev/null | sort -u >"$T/cands" || :
+	set -- "$(wc -l <"$T/cands" | tr -d ' ')" "$2"
+	[ "$1" = 1 ] && { cat "$T/cands"; return 0; }
+	[ "$1" = 0 ] && return 1
+	case $2 in
+	*docs/plans/*) prefs="docs/tasks/" ;;
+	*docs/tasks/*) prefs="docs/epics/ docs/directions/ docs/product/stories/" ;;
+	*docs/epics/*) prefs="docs/directions/ docs/product/directions/" ;;
+	*) prefs= ;;
+	esac
+	for p in $prefs; do
+		if [ "$(grep -c "^$p" "$T/cands")" = 1 ]; then grep "^$p" "$T/cands"; return 0; fi
+	done
+	return 2
+}
+
 q_trace() {
 	cur=$REL
+	from=
 	seen=" "
 	while :; do
 		anchor=
 		case $cur in *'#'*) anchor=" (#${cur#*#})"; cur=${cur%%#*} ;; esac
-		if [ ! -f "$cur" ]; then
-			echo "trace     broken link: $cur$anchor"
+		if r=$(resolve_link "$cur" "$from"); then
+			cur=$r
+		else
+			if [ $? = 2 ]; then
+				echo "trace     ambiguous link: $cur$anchor ($(tr '\n' ' ' <"$T/cands" | sed 's/ $//'))"
+			else
+				echo "trace     broken link: $cur$anchor"
+			fi
 			return 0
 		fi
+		case $seen in *" $cur "*) echo "trace     cycle at $cur"; return 0 ;; esac
+		seen="$seen$cur "
+		from=$cur
 		line=$(awk '
 			FNR == 1 { infm = ($0 == "---"); if (!infm) exit; next }
 			infm && $0 == "---" { exit }
@@ -810,10 +853,8 @@ q_trace() {
 		else
 			echo "trace     $id$anchor: no intent line${title:+ · (title) $title}"
 		fi
-		parent=$(awk -v key=relates "$AWK_FMLIST" "$cur" | cut -f2 | grep -v -E '(^|/)adr/' | head -n 1) || :
+		parent=$(awk -v key=relates "$AWK_FMLIST" "$cur" | cut -f2 | grep -v -E '(^|/)adr[/-]' | head -n 1) || :
 		[ -n "$parent" ] || return 0
-		case $seen in *" $parent "*) echo "trace     cycle at $parent"; return 0 ;; esac
-		seen="$seen$parent "
 		cur=$parent
 	done
 }

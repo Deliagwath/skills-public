@@ -212,6 +212,65 @@ EOF
 	mkfile "$R/docs/research/lab.md" <<'EOF'
 The lab's own D-002 and D-0021 are not product decisions.
 EOF
+	# Field shapes (probe-2026-10-09-nav-in-field-use F5, F6, F9).
+	mkfile "$R/tools/extra.py" <<'EOF'
+def prose_sup_fn():
+    return 1
+EOF
+	mkfile "$R/docs/adr/0010-before.md" <<'EOF'
+---
+id: docs/adr/0010-before.md
+title: Before
+---
+Uses `prose_sup_fn`.
+EOF
+	mkfile "$R/docs/adr/0011-after.md" <<'EOF'
+---
+id: docs/adr/0011-after.md
+title: After
+supersedes:
+  - docs/adr/0010-before.md (rules 4-6: the adoption-time mode)
+---
+Uses `prose_sup_fn`.
+EOF
+	mkfile "$R/docs/handbook/commands.md" <<'EOF'
+# Commands
+
+## Run the extra tool
+
+- Run `prose_sup_fn` (tools/extra.py) once.
+- Stage: provisional
+EOF
+	mkfile "$R/docs/directions/007-d.md" <<'EOF'
+---
+id: "007"
+title: "D7"
+intent: "D seven"
+---
+EOF
+	mkfile "$R/docs/tasks/007-t.md" <<'EOF'
+---
+id: "007"
+title: "T7"
+relates: ["epic-007", "adr-0010"]
+intent: "T seven"
+---
+EOF
+	mkfile "$R/docs/epics/007-e.md" <<'EOF'
+---
+id: "epic-007"
+title: "E7"
+relates: ["007"]
+intent: "E seven"
+---
+EOF
+	mkfile "$R/docs/plans/007-p.md" <<'EOF'
+---
+id: "007"
+title: "P7"
+relates: ["adr-0010", "007"]
+---
+EOF
 	git -C "$R" add -A
 	git -C "$R" -c user.name=t -c user.email=t@t commit -q -m fixture
 }
@@ -391,6 +450,23 @@ run_mode() { # run_mode ctags|none
 	has "$mode 24f exclusion row" "$out" '^product   X-001  docs/PRODUCT.md:8  current'
 	out=$(cd "$R" && nav docs D-009)
 	has "$mode 24g unknown id says so" "$out" '^product   D-009  not in docs/PRODUCT.md'
+
+	# 25. Field shapes (probe-2026-10-09-nav-in-field-use).
+	out=$(cd "$R" && nav docs prose_sup_fn)
+	hasnt "$mode 25a prose after a supersedes link is not a link" "$out" 'supersedes (rules'
+	has "$mode 25b the link itself is kept" "$out" 'supersedes docs/adr/0010-before.md (lookup)'
+	hasnt "$mode 25c an ADR superseded with a note is sealed" "$out" 'on-match  docs/adr/0010-before.md'
+	out=$(cd "$R" && nav trace docs/plans/007-p.md)
+	has "$mode 25d short id resolves Plan -> Task" "$out" 'trace     "007": "T seven"'
+	has "$mode 25e short id resolves Task -> Epic" "$out" 'trace     "epic-007": "E seven"'
+	has "$mode 25f short id resolves Epic -> Direction" "$out" 'trace     "007": "D seven"'
+	hasnt "$mode 25g adr- ids are skipped" "$out" 'Before'
+	out=$(cd "$R" && nav trace 007)
+	has "$mode 25h a bare shared id is ambiguous, not picked" "$out" '^trace     ambiguous link: 007 (docs/directions/007-d.md docs/plans/007-p.md docs/tasks/007-t.md)'
+	out=$(cd "$R" && nav trace epic-007)
+	has "$mode 25i a unique short id resolves" "$out" 'trace     "epic-007": "E seven"'
+	out=$(cd "$R" && nav file tools/extra.py)
+	has "$mode 25j a ## handbook entry is counted" "$out" '^handbook  1 entries matched in 1 files'
 
 	# State stays out of the work tree.
 	st=$(git -C "$R" status --porcelain --ignored | grep -v -e ' docs/directions/002-b.md$' || :)
