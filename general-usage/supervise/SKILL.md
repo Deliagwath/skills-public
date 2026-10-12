@@ -17,9 +17,11 @@ Identify what the implementation is measured against. In order of preference:
 2. ADRs referenced by that plan
 3. A task or epic the plan relates to
 
+**Inherit point:** if `sp` is installed (`~/.agent-skills/facilitated-waterfall/scripts/sp`), run `sp docs <path>` for each file in the diff. It finds governing docs the plan doesn't link, and the handbook entries for that code. Read them in rank order within the `budget` line's share, and skip `lookup` (sealed) docs unless one is needed. Without `sp`, take the list above as written.
+
 If none exist, ask the user what the implementation is supposed to do before proceeding.
 
-Read every anchor document fully. Produce a compact anchor brief — a summary of constraints, steps, and verification items the reviewer will use. This brief is passed to every reviewer subagent.
+Read every anchor document fully, and state the read depth at the head of the brief. Produce a compact anchor brief — a summary of constraints, steps, and verification items the reviewer will use. This brief is passed to every reviewer subagent.
 
 ## Phase 2 — Spawn reviewer (each cycle)
 
@@ -43,7 +45,22 @@ Examples: a bug with a clear correct behaviour defined in the plan, a missed ste
 
 Examples: the plan is silent on an edge case that surfaced, two valid approaches exist and neither is ruled out by the ADRs, a bug with multiple valid fixes with different trade-offs, anything that suggests the plan or ADR itself needs revision.
 
-Do not blur the line. If uncertain, treat it as a human decision.
+**Auto-continue**: the finding needs no change now and no decision, so there is nothing to gate on. It covers:
+- an out-of-plan observation (record it as an open item);
+- a nit outside what the anchor governs;
+- a finding that a fix already in this cycle has resolved;
+- a note that only confirms the anchor.
+
+Record it and keep looping. Don't ask the programmer about it, and never stop to ask whether to run another cycle. Manufacturing a gate is its own failure.
+
+Do not blur the line. If uncertain between autonomous fix and human decision, treat it as a human decision. If uncertain whether something needs action at all, it is not auto-continue.
+
+**Tag each finding by cause** as well. This tag is separate from the class above: the class routes *now*, the cause calibrates *later*.
+- `CONTEXT-GAP`: the anchor didn't say it. Typical sources are the plan being silent on an edge case and the Scope change exit below. The fix belongs in the anchor (an ADR, a Task, a handbook entry).
+- `JUDGMENT-GAP`: the anchor said it and the implementation missed it. Most autonomous fixes are this. The fix belongs in code.
+- `UNCLEAR`: you can't tell which. This is allowed.
+
+You assign the tag; the programmer never has to.
 
 ## Phase 4 — Fix (supervisor)
 
@@ -64,11 +81,11 @@ After each resolution, apply any follow-on fixes, then continue the loop.
 
 Return to Phase 2 and spawn a new reviewer subagent. Continue until one of:
 
-**Clean** — the subagent returns no findings. Report done, summarise what was fixed across all cycles.
+**Clean**: the subagent returns no findings, or only auto-continue ones. Report done, and summarise what was fixed across all cycles. End with a cause count across all cycles: `Causes: <n> CONTEXT-GAP · <n> JUDGMENT-GAP · <n> UNCLEAR`.
 
 **Blocked** — a human decision is needed. Escalate, then resume once resolved.
 
-**Scope change** — a finding reveals the plan or an ADR needs revision, not the implementation. Stop the loop. Surface this explicitly: "This finding suggests the anchor needs updating before implementation can continue." Let the programmer decide how to proceed.
+**Scope change** — a finding reveals the plan or an ADR needs revision, not the implementation (a CONTEXT-GAP that can't be patched by a decision). Stop the loop. Surface this explicitly: "This finding suggests the anchor needs updating before implementation can continue." Let the programmer decide how to proceed.
 
 ---
 

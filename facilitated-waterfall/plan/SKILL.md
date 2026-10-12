@@ -11,6 +11,8 @@ Find the input: interpret the argument naturally to locate the file in `docs/tas
 
 Read the task (Goal, Notes). Follow `relates` to read each ADR (Decision, Consequences). Note every constraint the ADRs impose — these are non-negotiable in the steps.
 
+**Inherit point:** for each file or directory the Task names, run `sp file <path>` (or `sp module <dir>`) and read by tier (`conventions` → Handbook → Inherit). That surfaces governing docs the Task doesn't link, and handbook gotchas for those files. State read depth before drilling. `sp` is `~/.agent-skills/facilitated-waterfall/scripts/sp`, not on `PATH`: test that file, not `which sp`. Without it, grep `docs/` for the paths instead.
+
 ## Phase 2 — Drill
 
 Before writing, probe the plan with the user. Apply throughout:
@@ -26,9 +28,9 @@ Ask one question at a time. Give your recommended answer before waiting for a re
 
 ## Phase 3 — Write
 
-Number sequentially from the highest existing file in `docs/plans/`. Write `docs/plans/NNN-slug.md`:
+Make the file with `sp new plan "<title>" --relates <task-id>,<adr-id>,…` (it numbers it, writes `docs/plans/NNN-slug.md` with `id: plan-NNN`, and prints the path), fill it as below, and run `sp check <plan-id>`. Without `sp`, number from the highest file in `docs/plans/`:
 
-**Frontmatter:** `relates` includes the task id and all ADR ids read.
+**Frontmatter:** `relates` includes the task id and all ADR ids read. Add an optional `intent:` line: one sentence saying what this Plan delivers toward the Task's Goal.
 
 **Context** — one paragraph: why this task exists and what ADR constraints apply.
 

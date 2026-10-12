@@ -28,10 +28,12 @@ For each proposed Epic or Task: probe its Goal until it is a single, testable ou
 ## Output
 
 Produce artifacts one at a time, confirming each before moving to the next:
-- Direction → Epics in `docs/epics/NNN-slug.md`
-- Epic → Tasks in `docs/tasks/NNN-slug.md`
+- Direction → Epics: `sp new epic "<title>" --relates <direction-id> --intent "…"` per Epic (`docs/epics/NNN-slug.md`)
+- Epic → Tasks: `sp new task "<title>" --relates <epic-id>,<adr-id>,… --intent "…"` per Task (`docs/tasks/NNN-slug.md`)
 
-Each file: frontmatter (`id` as filepath, `title`, `created`, `relates: [<input id>]`) + body:
+`sp` (`~/.agent-skills/facilitated-waterfall/scripts/sp`) numbers each one under a lock, so parallel sessions never collide, and writes the frontmatter and section headings. Run `sp check <id>` on each file, and `sp tree <input id>` to see the batch. Without `sp`, allocate the batch's numbers in one pass from the highest existing file and write the frontmatter by hand.
+
+Each file: frontmatter (`id` kind-prefixed, as `epic-NNN` / `task-NNN`; `title`, `created`, `relates: [<input id>]`, and an optional `intent:` line, one sentence drawn from the settled Goal, never invented) + body:
 
 **Epic body:** Goal · Scope · Out of scope
 

@@ -168,6 +168,138 @@ _install_dsh_skills() {
     _ok "DSH          [$namespace]: $count skills → $skills_dir/ (as $namespace-<skill>/ → repo folder)"
 }
 
+# --- Shipped scripts ---
+# A namespace may carry a scripts/ folder (e.g. facilitated-waterfall/scripts/nav).
+# Claude Code and Cursor link only SKILL.md, and OpenCode and Mirai copy it, so a
+# skill can't find its scripts relative to itself. Instead every skill names one
+# fixed path, ~/.agent-skills/<namespace>/scripts/, linked here to the repo.
+
+_link_scripts() {
+    local dir="$1"
+    local namespace="$2"
+    local target="$HOME/.agent-skills/$namespace/scripts"
+
+    [ -d "$dir/scripts" ] || return 0
+    mkdir -p "$(dirname "$target")"
+    [ -L "$target" ] || rm -rf "$target"
+    ln -sfn "${dir%/}/scripts" "$target"
+    _ok "Scripts      [$namespace]: ~/.agent-skills/$namespace/scripts/ → repo folder"
+}
+
+# --- Dependencies: Universal Ctags for nav ---
+# nav works without it (grep fallback), so this asks and never insists. Apple's
+# BSD /usr/bin/ctags can shadow a Homebrew install on PATH; nav finds the
+# Universal binary itself, but other tools may not.
+
+_is_uctags() { [ -x "$1" ] && "$1" --version 2>/dev/null | grep -q 'Universal Ctags'; }
+
+_find_uctags() {
+    local d n
+    local IFS=:
+    for d in $PATH /opt/homebrew/bin /usr/local/bin /home/linuxbrew/.linuxbrew/bin; do
+        for n in ctags uctags universal-ctags; do
+            _is_uctags "$d/$n" && { echo "$d/$n"; return 0; }
+        done
+    done
+    return 1
+}
+
+_ctags_install_cmd() {
+    if command -v brew &>/dev/null; then echo "brew install universal-ctags"
+    elif command -v apt-get &>/dev/null; then echo "sudo apt-get install -y universal-ctags"
+    elif command -v dnf &>/dev/null; then echo "sudo dnf install -y ctags"
+    elif command -v pacman &>/dev/null; then echo "sudo pacman -S --needed ctags"
+    fi
+}
+
+_ensure_uctags() {
+    local found cmd reply
+    if ! found="$(_find_uctags)"; then
+        cmd="$(_ctags_install_cmd)"
+        if [ -z "$cmd" ]; then
+            _warn "Universal Ctags not found, and no known package manager (brew, apt, dnf, pacman)."
+            echo "       nav will use its grep fallback. Install universal-ctags by hand for full strength."
+            return 0
+        fi
+        if [ ! -t 0 ]; then
+            _warn "Universal Ctags not found. nav will use its grep fallback."
+            echo "       For full strength, run: $cmd"
+            return 0
+        fi
+        printf '  ? nav works best with Universal Ctags. Run "%s" now? [y/N] ' "$cmd"
+        read -r reply || reply=
+        case "$reply" in
+            y|Y|yes|YES) $cmd || { _warn "Install failed. nav will use its grep fallback."; return 0; } ;;
+            *) _info "Skipped. nav will use its grep fallback."; return 0 ;;
+        esac
+        if ! found="$(_find_uctags)"; then
+            _warn "Installed, but no ctags reporting Universal was found. nav will use its grep fallback."
+            return 0
+        fi
+    fi
+    _ok "Universal Ctags: $found"
+    local first
+    first="$(command -v ctags 2>/dev/null || true)"
+    if [ -n "$first" ] && [ "$first" != "$found" ] && ! _is_uctags "$first"; then
+        _warn "$first (not Universal) comes first on PATH. nav finds $found anyway;"
+        echo "       for other tools, put $(dirname "$found") before $(dirname "$first") in PATH."
+    fi
+}
+
+# --- Dependencies: mdq and yq for sp (Direction 004) ---
+# Both optional: sp reads doc sections with mdq and checks frontmatter with
+# mikefarah's yq, and falls back to awk without them, saying so in its header.
+# Only mikefarah's yq counts: the Python yq that apt ships takes other arguments.
+
+_is_mdq() { command -v mdq &>/dev/null && mdq --version &>/dev/null; }
+_is_yq() { command -v yq &>/dev/null && yq --version 2>/dev/null | grep -q 'mikefarah'; }
+
+_tool_install_cmd() { # _tool_install_cmd mdq|yq
+    if command -v brew &>/dev/null; then echo "brew install $1"
+    elif [ "$1" = yq ] && command -v snap &>/dev/null; then echo "sudo snap install yq"
+    elif [ "$1" = mdq ] && command -v cargo &>/dev/null; then echo "cargo install --locked mdq"
+    fi
+}
+
+_ensure_tool() { # _ensure_tool mdq|yq "<what sp uses it for>"
+    local tool="$1" why="$2" cmd reply
+    if "_is_$tool"; then _ok "$tool: $(command -v "$tool")"; return 0; fi
+    cmd="$(_tool_install_cmd "$tool")"
+    if [ -z "$cmd" ]; then
+        _warn "$tool not found, and no known way to install it here. sp will use awk for $why."
+        return 0
+    fi
+    if [ ! -t 0 ]; then
+        _warn "$tool not found. sp will use awk for $why."
+        echo "       For full strength, run: $cmd"
+        return 0
+    fi
+    printf '  ? sp uses %s for %s. Run "%s" now? [y/N] ' "$tool" "$why" "$cmd"
+    read -r reply || reply=
+    case "$reply" in
+        y|Y|yes|YES) $cmd || { _warn "Install failed. sp will use awk for $why."; return 0; } ;;
+        *) _info "Skipped. sp will use awk for $why."; return 0 ;;
+    esac
+    if "_is_$tool"; then _ok "$tool: $(command -v "$tool")"
+    else _warn "Installed, but no working $tool was found on PATH. sp will use awk for $why."
+    fi
+}
+
+# --- Budget declaration for nav ---
+# nav sizes what a session inherits against AGENT_CONTEXT_TOKENS, the client's raw
+# context window. The window is per client, so this only reports; it never writes
+# a client's config. Unset, nav reports sizes but never trims or flags the handbook.
+
+_hint_budget() {
+    if [ "$_has_claude" = "1" ] && ! grep -q '"AGENT_CONTEXT_TOKENS"' "$HOME/.claude/settings.json" 2>/dev/null; then
+        _warn "Claude Code declares no AGENT_CONTEXT_TOKENS. nav's budget lines will read 'unset'."
+        echo "       Add \"env\": {\"AGENT_CONTEXT_TOKENS\": \"<window>\"} to ~/.claude/settings.json."
+    fi
+    if [ -z "${AGENT_CONTEXT_TOKENS:-}" ]; then
+        _info "Other clients (DSH, OpenCode, Mirai): set AGENT_CONTEXT_TOKENS to the model's window in their environment."
+    fi
+}
+
 # --- Client detection ---
 
 _has_claude=0   # Claude Code CLI + VS Code extension (shared ~/.claude/commands/)
@@ -240,6 +372,8 @@ for dir in "$REPO_DIR"/*/; do
     # Only directories holding <skill>/SKILL.md folders are namespaces (skips docs/ etc.)
     compgen -G "$dir*/SKILL.md" >/dev/null || continue
 
+    _link_scripts "$dir" "$namespace"
+
     # Claude Code + VS Code extension: ~/.claude/commands/<namespace>/<skill>.md → /namespace:skill
     if [ "$_has_claude" = "1" ]; then
         target="$HOME/.claude/commands/$namespace"
@@ -296,6 +430,14 @@ for dir in "$REPO_DIR"/*/; do
         _install_dsh_skills "$dir" "$namespace"
     fi
 done
+
+# --- Dependencies ---
+if [ -d "$HOME/.agent-skills/facilitated-waterfall/scripts" ]; then
+    _ensure_uctags
+    _ensure_tool mdq "doc sections"
+    _ensure_tool yq "frontmatter checks"
+    _hint_budget
+fi
 
 # --- Post-install cleanup ---
 # Remove stale skills.paths entries that pointed to this repo (no longer needed

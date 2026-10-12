@@ -12,6 +12,9 @@ The working document is a **Probe** (`docs/product/probes/probe-YYYY-MM-DD-slug.
 - A signal from the world → **Anchor**.
 - Loaded by `bottom-up` or `top-down` → **Anchor** in subroutine mode. The signal is the engineering finding the caller hands over, along with its probe or artifact id. Don't re-gather what the caller already found.
 - No docs/PRODUCT.md, or the PM asks to build it → **bootstrap**.
+- A signal that names a probe already `open` → **resume it**; don't create a new one. Before any other action, append a dated block under its Deliberation: `**YYYY-MM-DD — Resumed.** Read depth:`, then one line per Governing decision and governing doc, `FULL`, `PARTIAL (<sections>)` or `NOT_READ`. What you know only from the probe's own text is `NOT_READ`: the probe is testimony, not ground truth. Then re-read what the next step depends on, through the Phase 2 inherit point.
+
+**`sp`** (`~/.agent-skills/facilitated-waterfall/scripts/sp`, if installed) is how a session reads what the workspace already knows. Its rules are FW `conventions` → Handbook → Inherit. Without it, grep `docs/` as written below.
 
 ## Ascent guard
 
@@ -23,7 +26,7 @@ You may recommend changes to anything **below** the product line: themes, Direct
 
 ## Phase 1 — Anchor
 
-State the signal and the candidate interpretation in one or two sentences. Create the Probe with a collision-free id, `status: open`, and the **Signal** section filled. In subroutine mode, set `relates:` to the caller's probe or artifact so the two probes point at each other.
+State the signal and the candidate interpretation in one or two sentences. Create the Probe with `sp new product-probe "<short title>"` (`~/.agent-skills/facilitated-waterfall/scripts/sp`): it writes `docs/product/probes/probe-YYYY-MM-DD-slug.md` with `status: open` and the section headings (without `sp`, write them by hand). Fill the **Signal** section. In subroutine mode, set `relates:` to the caller's probe or artifact so the two probes point at each other.
 
 If docs/PRODUCT.md doesn't exist, stop: "There is no docs/PRODUCT.md to check this signal against. Run `reflect bootstrap` to build it first."
 
@@ -32,6 +35,8 @@ If docs/PRODUCT.md doesn't exist, stop: "There is no docs/PRODUCT.md to check th
 ## Phase 2 — Situate
 
 Read docs/PRODUCT.md. Walk through resolved decisions and product-level out of scope. Identify which D-/X-ids govern or relate to the signal, and record them in the Probe under **Governing decisions**. If no entry covers the signal area, write "gap — no governing decision". That is itself a finding.
+
+**Inherit point.** For each governing id, run `sp docs D-NNN` (or `X-NNN`): the row, what supersedes it, and the docs citing it, live ones ranked and sealed ones (resolved probes, research) as `lookup`. If the signal names a code path, also run `sp file <path>`. Read `docs/handbook/index.md` and the handbook entries it links: they hold product practice. Head **Governing decisions** with the read depth: the `sp` budget line (or `sp absent`), then each doc as `FULL` / `PARTIAL` / `NOT_READ`, and any sealed probe opened and why. Without `sp`, `grep -rn "PRODUCT.md#D-NNN" docs/` and leave resolved probes unread unless needed.
 
 Classify the signal using the table in `conventions`. Present the classification to the PM and ask: "Does that feel right?"
 
@@ -86,7 +91,7 @@ Show the current section and the proposed addition side by side. Follow confirm-
 
 ## Phase 5 — Propagate
 
-A changed decision is only half done until its dependents are known. For every D-/X-id superseded or amended in Phase 4, find what cites it, directly or through its parents:
+A changed decision is only half done until its dependents are known. For every D-/X-id superseded or amended in Phase 4, find what cites it, directly or through its parents. `sp docs D-NNN` gives the direct citations in one call. Without it:
 
 ```sh
 grep -rlH "PRODUCT.md#D-NNN" docs/ 2>/dev/null        # direct citations
@@ -111,11 +116,12 @@ Distil the probe into a durable record, then freeze it. The Probe can't move to 
 - Every **open question** is resolved or explicitly deferred with a reason.
 - Every docs/PRODUCT.md change is listed under **Changes**.
 - **Affected** is filled in: either every hit or "none".
+- **Deposit** is done, by FW `conventions` → Handbook → Deposit at a close. The area is the D-/X-ids and paths this probe touched. Product practice is deposited into the same `docs/handbook/` (one handbook per workspace): how this product's decisions are made, which signals proved to be noise, what the PM weighs. A decision itself goes to docs/PRODUCT.md, never the handbook. **Changes** carries the Deposit line: each entry added, promoted, demoted or retired, or `nothing durable`. Handbook entries need no PM confirmation: they start `provisional`, and the cut test prunes them.
 - The Probe is self-contained: a fresh session reading only this file can understand what happened.
 
-Append to `docs/product/probes/LEDGER.md` (create it if missing): `[probe-id] — resolved [DATE] — outcome: [one-line summary]`.
+Close it with `sp ledger reconcile <probe-id> "<one-line summary>"`: it appends `<probe-id> — resolved DATE — outcome: <summary>` to `docs/product/probes/LEDGER.md` and sets `status: resolved`. Without `sp`, append the line (creating the file if missing) and set the status by hand.
 
-Set `status: resolved`. If the signal turns out not to be worth pursuing, set `status: abandoned` and keep the probe as a record of why nothing was done.
+If the signal turns out not to be worth pursuing, set `status: abandoned` and keep the probe as a record of why nothing was done.
 
 ---
 

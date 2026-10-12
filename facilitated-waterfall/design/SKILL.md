@@ -43,7 +43,7 @@ Only when all three are true:
 2. Surprising without context — a future reader will wonder "why did they do it this way?"
 3. The result of a real trade-off — there were genuine alternatives
 
-Write ADRs to `docs/adr/NNNN-slug.md`. Set `relates` to include the input artifact's id.
+Make each ADR with `sp new adr "<title>" --relates <input artifact id>` (`~/.agent-skills/facilitated-waterfall/scripts/sp`; it writes `docs/adr/NNNN-slug.md` with `id: adr-NNNN`). When it replaces an earlier one, run `sp supersede <new adr-id> --of <old adr-id>`, which writes both edges and leaves the old ADR otherwise untouched. Run `sp check` on what you wrote. Without `sp`, write the file and both keys by hand.
 
 **Body:** Context (what situation forced this decision) · Decision (what was chosen) · Consequences (what this makes easier or harder going forward).
 

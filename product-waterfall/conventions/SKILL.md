@@ -61,7 +61,7 @@ direct ──Story──▶ top-down ──Task──▶ bottom-up
 | `top-down` → `reflect` | Shaping an FW Direction contradicts a resolved decision or product-level out of scope | Hard stop. Load `reflect` with the conflict as the signal. |
 | `bottom-up` → `direct` | The climb reaches a Story whose outcome, acceptance, or scope can't hold on contact with code, and no PRODUCT.md entry is touched | Load `direct` Refine for that Story. The PM decides; the Story gets a Revision entry. |
 | `bottom-up` → `reflect` | The climb reaches docs/PRODUCT.md: a resolved decision or product-level exclusion is the obstacle | Load `reflect` with the engineering finding as the signal. An ADR can never supersede a product commitment. |
-| `reflect` → `direct` / FW | A decision is superseded or a new one added | `reflect` greps `docs/` for the decision id and lists every **Affected** artifact in both layers, then recommends `direct` Refine for product artifacts and `bottom-up` for FW artifacts. It does not edit them. |
+| `reflect` → `direct` / FW | A decision is superseded or a new one added | `reflect` finds what cites the decision id (`sp docs D-NNN`, or grep `docs/` without it) and lists every **Affected** artifact in both layers, then recommends `direct` Refine for product artifacts and `bottom-up` for FW artifacts. It does not edit them. |
 
 **Subroutine mode.** When one skill loads another, the caller names the entry (tier, artifact, or signal) and hands over the context it already gathered. The loaded skill does not re-scan. It runs only the phase requested, writes its artifacts, and returns the outcome so the caller can resume. Loading a product skill **always** involves the PM: product intent is never resolved autonomously.
 
@@ -115,7 +115,7 @@ A term lives in exactly one. Before appending, check the other file. If the term
 
 ## Artifact formats
 
-Every file carries frontmatter with at least `id` (the repo-relative path), `title`, `created`, and `relates: [...]`. `relates` points **upward** and is fixed at creation. An optional `tracker:` key may hold an external ticket key or URL if the team mirrors work elsewhere. Skills never read from or write to that tracker.
+Every file carries frontmatter with at least `id`, `title`, `created`, and `relates: [...]`. The `id` is kind-prefixed (FW adr-0006): `product-direction-NNN`, `product-epic-NNN`, `story-NNN`, and a probe's dated `probe-YYYY-MM-DD-slug`. Links and prose cite that id ("story-013"), and FW artifacts by theirs (`task-084`). `relates` points **upward** and is fixed at creation. An optional `tracker:` key may hold an external ticket key or URL if the team mirrors work elsewhere. Skills never read from or write to that tracker.
 
 ```
 docs/PRODUCT.md                               Identity · Decisions · Out of scope · Themes · Glossary
@@ -132,7 +132,7 @@ docs/product/probes/LEDGER.md                 Append-only record of resolved pro
 
 ## Numbering
 
-Directions, Epics, and Stories are numbered sequentially from the highest existing file in their own directory. Allocate a whole breakdown batch atomically in one pass. Probes use collision-free dated ids (`probe-YYYY-MM-DD-slug`). Decision and exclusion ids (`D-NNN`, `X-NNN`) continue from the highest in docs/PRODUCT.md.
+Directions, Epics, and Stories are numbered sequentially from the highest existing file in their own directory. Make each one with FW's `sp` (`~/.agent-skills/facilitated-waterfall/scripts/sp`, FW `conventions` → *The `sp` script*): `sp new product-direction|product-epic|story "<title>" --relates <id>,…` takes the next number under a lock and writes the frontmatter and sections; then `sp check <id>`. Without `sp`, allocate a whole breakdown batch in one pass and write the frontmatter by hand. Probes use collision-free dated ids (`sp new product-probe "<title>"`, or `probe-YYYY-MM-DD-slug` by hand). Decision and exclusion ids (`D-NNN`, `X-NNN`) continue from the highest in docs/PRODUCT.md.
 
 ## Drilling technique
 
@@ -173,9 +173,11 @@ Every write operation follows this pattern:
 
 Never silently create, modify, or link anything.
 
+**The one exception** is a handbook deposit at `reflect`'s close (FW `conventions` → Handbook → Deposit at a close). `docs/handbook/` entries are not product artifacts: they start `provisional`, the cut test prunes them, and the model classifies them so the PM never has to. The Deposit line in **Changes** says what was written.
+
 ## Audit
 
-Read-only. Writes nothing; reports drift. Build the graph from frontmatter only (`grep -rH "^id:\|^relates:" docs/product/ docs/directions/ docs/tasks/`), then check:
+Read-only. Writes nothing; reports drift. Build the graph from frontmatter only (`sp tree <id>` per Direction; without `sp`, `grep -rH "^id:\|^relates:" docs/product/ docs/directions/ docs/tasks/`), and run `sp check` for links that are broken or ambiguous, then check:
 
 - **Superseded governance.** A Direction, Epic, or Story whose `relates` cites a D-/X-id that a newer row supersedes, with no Revision acknowledging it.
 - **Contradiction.** A Direction or Story whose Out of scope or Outcome contradicts a current resolved decision or product-level exclusion.

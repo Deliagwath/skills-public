@@ -11,6 +11,8 @@ Descend from intent toward the waterline. Produce durable, committed artifacts a
 - A design decision surfacing during breakdown → **Design** (ADR).
 - A product Story or Epic (`docs/product/stories/…`, `docs/product/epics/…`) → the **seam** from `product-waterfall` `direct`. Read it and walk its `relates` up to the product Direction and the `docs/PRODUCT.md` entries it cites. If the Story needs design or several ordered Tasks, start at **Shape**; if it is already focused, go straight to **Breakdown** into Tasks.
 
+**Inherit point: entry.** When the entry names an area or a code path, run `sp --role top-down module <dir>` on it; when it names an existing artifact, run `sp --role top-down tree <id>` and `sp trace <id>` (`conventions` → Handbook → Inherit), and state read depth before the interview. A raw problem with no path makes no call, and the statement says so. `sp` is `~/.agent-skills/facilitated-waterfall/scripts/sp`, not on `PATH`: test that file, not `which sp`. Without it, the text rules there apply.
+
 When invoked as a subroutine by `bottom-up`, the caller names the tier and hands you the gathered context — do not re-scan; author the one artifact requested and return.
 
 **Product check.** If `docs/PRODUCT.md` exists, read its Resolved Decisions and Product-level Out of Scope before authoring. These are above both waterlines (see `conventions` → Product layer). If the work would contradict one, **hard stop**: load `product-waterfall` `reflect` with the conflict as the signal, and resume only on its outcome. Never record an ADR that overrides a product decision.
@@ -23,7 +25,7 @@ Stop at the underside of the waterline. Top-down's output is a Task (optionally 
 
 ## Phase 1 — Shape (Direction)
 
-Interview until all five sections are precise, then write `docs/directions/NNN-slug.md`. Cover in order; drill each vague answer until it holds:
+Interview until all five sections are precise, then make the file with `sp new direction "<title>" --intent "<one sentence>"` (it numbers it and writes the frontmatter and section skeleton; cold, write `docs/directions/NNN-slug.md` by hand), fill the sections, and run `sp check <direction-id>`. Cover in order; drill each vague answer until it holds:
 
 1. **Problem** — what is broken or missing, stated plainly.
 2. **Appetite** — how much complexity/effort this is worth (a budget, not an estimate).
@@ -32,6 +34,8 @@ Interview until all five sections are precise, then write `docs/directions/NNN-s
 5. **Constraints** — what cannot change regardless of how it's solved.
 
 Optionally add **Risk** (one line: blast radius · rollback · cost-of-wrong) when the initiative is hard to reverse. Update `docs/CONTEXT.md` when a domain term resolves. Frontmatter `relates: []`.
+
+**Intent line.** Every Direction, Epic and Task written here gets an optional one-sentence `intent:` in frontmatter, drawn from its settled Problem or Goal. Leave it out rather than invent one. Walking up `relates`, these lines compose into the intent trace (`conventions` → Artifact formats).
 
 **From a Story.** The Story has already settled the intent: don't re-interview it. Inherit its Outcome and Acceptance criteria as the Success signal, and its Out of scope (plus its parents' Out of scope) as Out of scope. Drill only the engineering sections (Appetite, Constraints, Risk) and any engineering scope the Story doesn't cover. Set `relates: [<story id>]`. If drilling shows that the Story's outcome or acceptance can't hold, stop and hand it to `direct` Refine. Don't redefine it here.
 
@@ -50,8 +54,8 @@ Confirm the tier with the user before producing output.
 **Own the horizontal structure in the Epic (when used).** The Epic's **Tasks** section is the manifest — a table of children with a `Depends on` column; **Sequencing** derives the order (or "parallel"). Dependency edges live *only* in the manifest — never duplicate them onto Tasks, so re-ordering never means editing Tasks.
 
 **Write**, one artifact at a time, confirming each:
-- Epic → `docs/epics/NNN-slug.md` — Goal · Scope · Out of scope · Tasks · Sequencing · Done when. `relates: [<direction id>]`.
-- Task → `docs/tasks/NNN-slug.md` — Goal · Notes. `relates: [<epic id or direction id>, <adr ids>]`. When breaking a Story down directly (no FW Direction), use `relates: [<story id>]`. The Story's Acceptance criteria must be covered by the union of its Tasks' Goals.
+- Epic → `sp new epic "<title>" --relates <direction-id>` (`docs/epics/NNN-slug.md`) — Goal · Scope · Out of scope · Tasks · Sequencing · Done when.
+- Task → `sp new task "<title>" --relates <epic-id or direction-id>,<adr-id>,…` (`docs/tasks/NNN-slug.md`) — Goal · Notes. When breaking a Story down directly (no FW Direction), use `--relates <story-id>`. Run `sp check <id>` on each file written; `sp tree <direction-id>` shows the whole batch. The Story's Acceptance criteria must be covered by the union of its Tasks' Goals.
 
 Allocate the whole batch of numbers atomically (see `conventions` → Numbering). Update `docs/CONTEXT.md` on resolved terms.
 
@@ -62,9 +66,11 @@ Record an ADR **only** when all three hold:
 2. **Surprising without context** — a future reader will ask "why this way?"
 3. **A real trade-off** — there were genuine alternatives.
 
+**Inherit point.** Before writing, run `sp --role top-down docs <symbol|path> --type adr` on what the decision touches, to find the ADRs already governing it. A `supersedes … (lookup)` pointer names a sealed predecessor; open it only if the successor may not restate what you need.
+
 Interview down each branch of the design tree, resolving dependencies one at a time. Challenge decisions that contradict a parent Direction or an existing ADR. When a term resolves, update `docs/CONTEXT.md` inline.
 
-Write `docs/adr/NNNN-slug.md` — **Context · Decision · Consequences · Alternatives** (rejected options *and why*). Set `relates` to include the artifact that raised it; add `supersedes: [<adr id>]` when it replaces an earlier decision. The ADR sits at the waterline: this is the same file `bottom-up` appends to when code disagrees — author it so either entry direction reads cleanly.
+Make it with `sp new adr "<title>" --relates <id of the artifact that raised it>` (`docs/adr/NNNN-slug.md`) — **Context · Decision · Consequences · Alternatives** (rejected options *and why*). When it replaces an earlier decision, run `sp supersede <new adr-id> --of <old adr-id>`: it writes `supersedes` on the new one and `superseded-by` on the old one, which gets no other change. Then `sp check` on both. The ADR sits at the waterline: this is the same file `bottom-up` appends to when code disagrees — author it so either entry direction reads cleanly.
 
 ## Rules
 

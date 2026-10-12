@@ -13,13 +13,30 @@ You may change anything **below** the waterline freely — placement, class, mod
 
 ---
 
+## Resuming an open probe
+
+If the trigger names a probe that is already `open`, don't create a new one. Resume it. **Before any other action**, append a dated block under its Findings recording what this session actually re-read:
+
+```
+**YYYY-MM-DD — Resumed.** Read depth:
+- adr-0007 — FULL
+- task-012 — PARTIAL (Goal only)
+- direction-003 — NOT_READ (known from this probe's summary)
+```
+
+List every Governing doc. Anything you know only from the probe's own text is **inherited, not read**: mark it `NOT_READ`. The probe is testimony, not ground truth. Continue from the map, not from the summary's next step. This is a statement, not a gate: go on and re-read what the next step depends on. To re-read, take an inherit point (`conventions` → Handbook → Inherit) with `sp file` on the path the next step touches (or `sp tree <id>` on the artifact it touches), and put its budget line at the head of the block. The session that creates the probe states its read depth in Phase 2 instead.
+
 ## Phase 1 — Anchor
 
-State the trigger and the candidate quick-fix in one or two lines. Create the Probe with a collision-free id (`probe-YYYY-MM-DD-slug`), `status: open`, and the **Trigger** section filled. No authoring above the line yet.
+State the trigger and the candidate quick-fix in one or two lines. A trigger can be a record from `sp log`, handed over by `debugging:improve-sp`: the call, its rerun line and the verdict that `sp` is at fault. Reproduce it from the rerun line before anything else; the fix goes in `sp` with a regression case in `test.sh` on the suite's fixture, never with the record's private paths. A trigger can also be an `effect not achieved` line in `docs/tasks/LEDGER.md`. In that case the Task's mechanics were verified but its intended effect did not show up in use, so climb from what was built to why it didn't work. If the Task serves a Story, the climb must reach the Story's Outcome: a wrong mechanism is fixed below the line, and a Story that can't hold goes to `direct` Refine (or a D-/X-entry to `reflect`), as in Phase 3. Create the Probe with `sp new probe "<short title>" --relates <governing id>,…`: it writes the collision-free id (`probe-YYYY-MM-DD-slug`), `status: open` and the section skeleton, and prints the path (`conventions` → *The `sp` script*; without `sp`, write them by hand). Then fill the **Trigger** section. No authoring above the line yet.
 
 ## Phase 2 — Situate
 
-Locate the code (`grep`/`find`/`git log`). Walk `relates` **upward** from whatever artifact governs this area to collect every constraint — ADRs, the Task/Epic scope, the Direction. If the chain crosses into the product layer, keep walking: the Story, its product Epic/Direction, and the `docs/PRODUCT.md` D-/X-entries they cite. Record them in **Governing docs**. If none exist, write "code ahead of docs" — that is itself a finding to reconcile later.
+Locate the code (`grep`/`find`/`git log`). **Inherit point:** `sp file <trigger path>` (`conventions` → Handbook → Inherit) gives the docs linked to it, ranked, with the handbook and the budget share. When the trigger names an artifact instead of a code path ("direction-021"), run `sp tree <id>` and `sp trace <id>` first: where it stands, what is under it, and what is next. `sp` is `~/.agent-skills/facilitated-waterfall/scripts/sp`, not on `PATH`: test that file, not `which sp`. Without it, the text rules there apply. Then walk `relates` **upward** from whatever artifact governs this area to collect every constraint — ADRs, the Task/Epic scope, the Direction. `sp` finds docs only on evidence, so the walk is what makes the set complete. Read what it finds by tier, constraint sections first (`sp show <id> Decision`, `sp show <id> Constraints "Out of scope"`). If the chain crosses into the product layer, keep walking: the Story, its product Epic/Direction, and the `docs/PRODUCT.md` D-/X-entries they cite. Record them in **Governing docs**. If none exist, write "code ahead of docs" — that is itself a finding to reconcile later.
+
+Head the Governing docs section with the **intent trace**: one sentence per level, leaf to root, taken from each artifact's `intent:` along the first parent that sits higher (`conventions` → Artifact formats). Where a level has none, write `<id>: no intent line`. Never compose one from the body. `sp trace <id>` derives it, showing a missing line as `(title)`. The trace is what the climb tests the fix against, so a gap there is worth knowing before Phase 3.
+
+Below the trace, state the **read depth at entry** (`conventions` → Handbook → Inherit): the budget line, each doc as `FULL` / `PARTIAL` / `NOT_READ`, what was trimmed over the share, and any sealed doc opened and why.
 
 ## Phase 3 — Climb & deliberate
 
@@ -33,14 +50,14 @@ placement (right spot?) → class (right abstraction?) → module (right owner?)
 
 The last two rungs exist only when a product layer governs this area (see `conventions` → Product layer). When it does, the climb reads them too.
 
-**Explore the code before you conclude anything.** Read the code the fix touches *and* the code the governing ADR describes — reason from the source, not from the doc's summary of it. Record what you find in **Findings** (dated, append-only — what investigation revealed about reality). Record the climb in **Deliberation**: which rung each candidate settled or failed at, and whether the line was hit. Keep **Open questions** (each with "what would resolve it") and **Risk** (blast radius · rollback · cost-of-wrong) current as you go.
+**Explore the code before you conclude anything.** Read the code the fix touches *and* the code the governing ADR describes — reason from the source, not from the doc's summary of it. **Inherit point:** on entering a module you haven't situated yet, `sp module <dir>` first. Record what you find in **Findings** (dated, append-only — what investigation revealed about reality). Record the climb in **Deliberation**: which rung each candidate settled or failed at, and whether the line was hit. Keep **Open questions** (each with "what would resolve it") and **Risk** (blast radius · rollback · cost-of-wrong) current as you go.
 
 **Test each governing decision — don't just obey it.** For every ADR that governs this area, hold its Decision against your Findings and ask: are its Context and assumptions still true in the code as it stands today? Does the clean fix you found quietly contradict, erode, or route *around* the decision? A decision you can only satisfy by working around it is a signal the ADR may be stale — not that your fix is clever. Write an explicit verdict for each governing ADR in Deliberation — `still holds — <why>` or `amendment candidate — <what reality changed>` — **before** you resolve. Skipping straight from a below-the-line home to implementation without recording these verdicts is the drift this phase exists to prevent.
 
 **Resolve at the line:**
 - **Fits below the line *and* every governing decision still holds** (verdicts recorded) → mechanism change. Proceed to implement. No ceremony.
 - **Requires an above-the-line change** → classify it:
-  - *Correction* (the recorded decision is simply wrong on contact with code) → surface the trade-off, get explicit acceptance, then append a **superseding ADR** through the `design` discipline (load `top-down` Phase 3). Record the acceptance in Deliberation.
+  - *Correction* (the recorded decision is simply wrong on contact with code) → surface the trade-off, get explicit acceptance, then append a **superseding ADR** through the `design` discipline (load `top-down` Phase 3), which writes both edges with `sp supersede <new adr> --of <old adr>`. Record the acceptance in Deliberation.
   - *Net-new intent* (a missing decision, Task, or Direction) → **load `top-down`** at the matching tier to author it properly, then resume:
     - Missing decision → `top-down` Phase 3 (ADR).
     - Missing work unit → `top-down` Phase 2 (Breakdown → Task).
@@ -50,11 +67,11 @@ The last two rungs exist only when a product layer governs this area (see `conve
   - *A product decision or exclusion is the obstacle* (a D-/X-entry) → **load `product-waterfall` `reflect`**, with this finding as the signal and this probe as `relates`. Resume on its verdict: `holds` means go back down and honour it; `superseded` means continue against the new decision.
   - Record the hand-off and its outcome in Deliberation.
 
-**Autonomy scales to tier** (per `conventions`): a **Direction**-level or product-level gap is intent — always interview the human. A **Task/ADR** gap whose answer is derivable from code + existing docs, you may drive autonomously, escalating only on genuine ambiguity.
+**Autonomy scales to tier** (per `conventions` → Depth & autonomy): a **Direction**-level or product-level gap is intent — always interview the human. A **Task/ADR** gap whose answer is derivable from code + existing docs, you may drive autonomously, escalating only on genuine ambiguity.
 
 ## Phase 4 — Implement
 
-Only below the line, only after Phase 3 resolves — meaning a per-ADR verdict is recorded and every `amendment candidate` has been carried through the Correction path, not deferred. Do not open a Plan while any governing ADR is still an unresolved amendment candidate. Derive the **Plan** from the Task + governing ADRs when the work needs step-decomposition; write `docs/plans/NNN-slug.md` (Context · Steps · Verification · Risk). A Plan may span several sibling Tasks. Skeleton first, then body. Append verification results to the Probe's Findings. Do not report done if any Verification item fails or any ADR decision is violated.
+Only below the line, only after Phase 3 resolves — meaning a per-ADR verdict is recorded and every `amendment candidate` has been carried through the Correction path, not deferred. Do not open a Plan while any governing ADR is still an unresolved amendment candidate. Derive the **Plan** from the Task + governing ADRs when the work needs step-decomposition, which is judged by author-blind risk, not importance (`conventions` → Depth & autonomy); write it with `sp new plan "<title>" --relates <task-id>,<adr-id>,…` (Context · Steps · Verification · Risk), then `sp check <plan-id>`. A Plan may span several sibling Tasks. **Inherit point:** before editing a file outside what Phases 2–3 situated, `sp file <path>`; its handbook gotchas are the reflexes for that move. Skeleton first, then body. Append verification results to the Probe's Findings. Do not report done if any Verification item fails or any ADR decision is violated.
 
 ## Phase 5 — Reconcile (the return path)
 
@@ -64,8 +81,9 @@ Distill the probe into durable record, then freeze it. The Probe cannot move to 
 - Every Deliberation **conflict** is either fixed-in-code or recorded as a superseding ADR with accepted trade-off — never silently dropped. A product-level conflict is closed only by a Story Revision or a resolved `reflect` probe.
 - Every **docs/CONTEXT.md** term the work touched is verified against the current code and updated if stale.
 - The artifacts produced/updated are listed in **Reconciliation** (new/superseded ADR, updated Task, new Direction, CONTEXT entries), and their `relates` link back to this probe.
+- **Deposit** is done (`conventions` → Handbook → Deposit at a close). The probe's lessons are deposited, entries it relied on are promoted, and the cut test has run if it was triggered. Reconciliation carries the Deposit line, which names what was added, promoted, demoted or retired, or says `nothing durable`. If `docs/handbook/` is missing and something is durable, create it as `note` Bootstrap does: five files, and an `index.md` with `last verified: never` and `last pruned: never · 0 entries`.
 
-Append a `LEDGER.md` line. Set `status: reconciled`. A probe abandoned (not worth pursuing) is set `status: abandoned` and kept as a "why we didn't" record.
+Close it with `sp ledger reconcile <probe-id> "<one-line outcome>"`: it appends `- <probe-id> — reconciled DATE — <outcome>` to `docs/probes/LEDGER.md` and sets `status: reconciled`. Without `sp`, do both by hand. Then run `sp check` on every artifact the probe produced. A probe abandoned (not worth pursuing) is set `status: abandoned` and kept as a "why we didn't" record.
 
 ## Rules
 

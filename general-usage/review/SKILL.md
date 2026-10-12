@@ -25,7 +25,9 @@ Identify the type:
 
 ## Phase 2 — Gather anchors (code review only)
 
-If the subject is code, look for facilitated-waterfall documents that constrain this work:
+If the subject is code, look for facilitated-waterfall documents that constrain this work.
+
+**Inherit point:** if `sp` is installed (`~/.agent-skills/facilitated-waterfall/scripts/sp`), run `sp docs <path>` for each changed file. It lists the live docs linked to that code, ranked and sized, and the handbook entries for it. Read them in rank order within the `budget` line's share, and skip `lookup` (sealed) docs unless one is needed. Put a read-depth line per anchor at the top of the report: `FULL`, `PARTIAL` or `NOT_READ`. Without `sp`, take the steps below as written.
 
 1. Scan `docs/plans/` for a plan whose verification section references changed files or features
 2. Follow the plan's `relates` links to find the associated Task, Epic, and any ADRs
@@ -66,25 +68,34 @@ For any artifact: flag internal contradictions, missing sections, and links that
 
 Structure findings by severity. Only include sections that have findings.
 
+Tag each finding (not open questions) with its likely cause, chosen by you, never asked of the user:
+- `[CONTEXT-GAP]`: the anchors didn't say it, so the fix is to an ADR, a Task or a handbook entry;
+- `[JUDGMENT-GAP]`: the anchors said it and the work missed it, so the fix is to the work;
+- `[UNCLEAR]`: you can't tell which. This is allowed.
+
+With no anchors found, every finding is `[CONTEXT-GAP]` or `[UNCLEAR]`.
+
 ```
 ## Review: <subject>
 Anchors: <plan / ADRs used, or "none found">
 
 ### Bug / Violation
 Findings that are incorrect or break a stated constraint. Each one needs to be addressed.
-- [file:line or doc section] <what is wrong and why>
+- [file:line or doc section] [JUDGMENT-GAP] <what is wrong and why>
 
 ### Concern
 Risky, unclear, or likely to cause problems. Worth discussing before merging or moving forward.
-- [location] <what the concern is and what could go wrong>
+- [location] [CONTEXT-GAP] <what the concern is and what could go wrong>
 
 ### Nit
 Minor style, naming, or cleanup. Low priority — fix or ignore at your discretion.
-- [location] <what and why>
+- [location] [JUDGMENT-GAP] <what and why>
 
 ### Open questions
 Things the review could not resolve — missing context, ambiguous intent, or anchors that don't cover this case.
 - <question>
+
+Causes: <n> CONTEXT-GAP · <n> JUDGMENT-GAP · <n> UNCLEAR
 ```
 
 If there are no findings, say so plainly: "No findings. Looks good."

@@ -29,7 +29,7 @@ State explicitly what each finding relates to, supersedes, or leaves untouched. 
 
 ## Phase 3 — Write
 
-Write each artifact in the correct location and format:
+Write each artifact with `sp new <kind> "<title>" --relates <id>,…` (`~/.agent-skills/facilitated-waterfall/scripts/sp`; test that file). It takes the next number under a lock, writes the kind-prefixed `id` (`direction-NNN`, `epic-NNN`, `task-NNN`, `adr-NNNN`, `plan-NNN`), `title`, `created`, `relates` and the section headings, and prints the path. Fill the body, then run `sp check <id>`. Without `sp`, write the same by hand, in the location and format below:
 
 **Direction** (`docs/directions/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: []`. Body: Problem · Appetite · Out of scope · Success signal · Constraints.
 
@@ -43,11 +43,11 @@ Write each artifact in the correct location and format:
 
 **Plan** (`docs/plans/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: [<task id>, <adr ids>]`. Body: Context · Steps · Verification.
 
-Number each new file sequentially from the highest existing file in the target directory. Produce artifacts one at a time, confirming each before moving to the next.
+Without `sp`, number each new file sequentially from the highest existing file in the target directory. Produce artifacts one at a time, confirming each before moving to the next.
 
 ## Rules
 
 - Do not invent findings. Only capture what the session actually produced.
 - If the session produced nothing worth preserving, say so.
-- If a decision changes, append a new ADR whose `supersedes` field names the old one. Never edit the original — supersession is recorded by the new file, not by mutating the old.
+- If a decision changes, append a new ADR and run `sp supersede <new adr-id> --of <old adr-id>`: the new one gets `supersedes`, the old one gets `superseded-by` and nothing else. Never edit the original's body or decision (facilitated-waterfall adr-0005). Without `sp`, write both keys by hand.
 - Do not duplicate content already in the conversation into the artifact verbatim — distil it.

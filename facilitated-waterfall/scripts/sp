@@ -1,0 +1,2486 @@
+#!/bin/sh
+# sp: where code is defined, and which live docs govern it, in one workspace.
+# `nav` is an alias for the read verbs.
+#
+# One tags file per workspace, at <git-common-dir>/nav/tags, regenerated lazily
+# when the file listing or any listed file changes. Code definitions come from
+# Universal Ctags when it is found, else from a keyword grep. Doc mentions (the
+# backticked names in Markdown) are indexed by awk either way. Sealed docs
+# (closed probes, ledgered Plans, superseded ADRs, archive/) and research are
+# indexed as lookup-only. The read verbs write nothing but the state directory.
+# sp reports budgets; it never enforces them.
+#
+# Every artifact reference goes through one resolver (ADR 0006): a kind-prefixed
+# id (`task-084`) through frontmatter `id:`, then kind directory + number; a
+# path; a legacy short id (`"084"`), narrowed by the upward rule. Several
+# candidates are reported as ambiguous, never picked. A doc is superseded when
+# a successor's `supersedes` names it, its own `superseded-by` is set, or its
+# legacy `status:` says so (ADR 0005); only ADRs are sealed by it.
+#
+# Both directions read one link table, built at regeneration. A mention links
+# to code only on evidence: an anchor (`Sym` (path), a qualified name, an exact
+# path) or a unique identifier-shaped name outside tests. Code that cites a doc
+# ("ADR 0042") links the other way. Everything else stays unlinked, with its
+# reason, and is counted rather than guessed.
+set -eu
+LC_ALL=C
+export LC_ALL
+
+# --- The call log (Direction 005): opt in with SP_LOG=<absolute path> ---
+# sp runs itself as a child that skips this block, so the answer is the unset
+# path's, byte for byte. It replays the child's stdout and stderr, appends one
+# JSONL record per call (argv, cwd, workspace, exit, stderr; stdout too with
+# SP_LOG_LEVEL=full), and exits with the child's code. A log it cannot write
+# costs one stderr line, never the answer. Unset, this block is one test.
+if [ -n "${SP_LOG:-}" ] && [ -z "${SP_LOG_META:-}" ]; then
+	case $0 in */*) me=$0 ;; *) me=./$0 ;; esac
+	if ! L=$(mktemp -d "${TMPDIR:-/tmp}/sp-log.XXXXXX" 2>/dev/null); then
+		echo "sp: SP_LOG not written (no temp dir): $SP_LOG" >&2
+		SP_LOG_META=/dev/null
+		export SP_LOG_META
+		exec /bin/sh "$me" "$@"
+	fi
+	trap 'rm -rf "$L"' EXIT
+	trap : INT TERM HUP
+	t0=$(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
+	set +e
+	SP_LOG_META=$L/meta /bin/sh "$me" "$@" >"$L/out" 2>"$L/err"
+	st=$?
+	set -e
+	cat "$L/out" || :
+	cat "$L/err" >&2 || :
+	ws= role=
+	[ ! -s "$L/meta" ] || { IFS= read -r ws; IFS= read -r role; } <"$L/meta" || :
+	[ -n "$ws" ] || ws=$(git rev-parse --show-toplevel 2>/dev/null) || ws=$PWD
+	why="cannot write"
+	case $SP_LOG in /*) ;; *) why="not an absolute path" ;; esac
+	if [ "$why" = "cannot write" ] && mkdir -p "$(dirname "$SP_LOG")" 2>/dev/null &&
+		SPL_T0=${t0%% *} SPL_TS=${t0#* } SPL_T1=$(date -u +%s) SPL_EXIT=$st SPL_WS=$ws SPL_CWD=$PWD SPL_ROLE=$role \
+		SPL_NAME=$(basename "$0") SPL_REV=$(cksum <"$me" | cut -d' ' -f1) \
+		SPL_FULL=${SP_LOG_LEVEL:-} SPL_OUT=$L/out SPL_ERR=$L/err awk '
+		function rep(s, ch, to,   r, i) {
+			r = ""
+			while ((i = index(s, ch)) > 0) { r = r substr(s, 1, i - 1) to; s = substr(s, i + 1) }
+			return r s
+		}
+		function j(s,   c) {
+			s = rep(rep(s, "\\", "\\\\"), "\"", "\\\"")
+			s = rep(rep(rep(s, "\n", "\\n"), "\t", "\\t"), "\r", "\\r")
+			for (c = 1; c < 32; c++) if (c != 9 && c != 10 && c != 13) s = rep(s, sprintf("%c", c), sprintf("\\u%04x", c))
+			return "\"" rep(s, sprintf("%c", 127), "\\u007f") "\""
+		}
+		# A file as one string, its lines in F[1..n] for the marks.
+		function slurp(f,   l, s, n) {
+			n = 0
+			while ((getline l < f) > 0) { F[++n] = l; s = (n > 1) ? (s "\n" l) : l }
+			close(f)
+			FN = n
+			return s
+		}
+		function mark(s) {
+			if (s ~ /(^|[^a-z])ambiguous([^a-z]|$)/) M["ambiguous"] = 1
+			if (s ~ /(^|[^a-z])broken([^a-z]|$)/) M["broken"] = 1
+		}
+		BEGIN {
+			role = ENVIRON["SPL_ROLE"]
+			for (i = 1; i < ARGC; i++) args = args (i > 1 ? "," : "") j(ARGV[i])
+			# The verb, past the global options; a help call is never marked.
+			help = ARGC == 1
+			for (i = 1; i < ARGC; i++) {
+				a = ARGV[i]
+				if (a == "--help" || a == "-h") help = 1
+				if (verb != "") { if (i == vi + 1 && a == "help") help = 1; continue }
+				if (a == "-C" || a == "--budget" || a == "--role") { if (a == "--role" && role == "") role = ARGV[i + 1]; i++; continue }
+				verb = a; vi = i
+			}
+			if (verb == "help") help = 1
+			if (role == "") role = "bottom-up"
+			err = slurp(ENVIRON["SPL_ERR"])
+			if (length(err) > 4000) err = substr(err, 1, 4000) "\n[stderr cut at 4000 bytes]"
+			if (!help && verb != "log") for (i = 1; i <= FN; i++) mark(F[i])
+			out = slurp(ENVIRON["SPL_OUT"])
+			cut = "false"
+			for (i = 1; i <= FN; i++) {
+				if (F[i] ~ /\+[0-9]+ more/) cut = "true"
+				if (!help && verb != "log") mark(F[i])
+			}
+			marks = ""
+			if ("ambiguous" in M) marks = "\"ambiguous\""
+			if ("broken" in M) marks = marks (marks == "" ? "" : ",") "\"broken\""
+			printf "{\"v\":1,\"ts\":%s,\"dur\":%d,\"exit\":%d,\"ws\":%s,\"cwd\":%s,\"name\":%s,\"argv\":[%s],\"role\":%s,\"session\":%s,\"rev\":%s,\"summary\":%s,\"cut\":%s,\"marks\":[%s],\"stderr\":%s",
+				j(ENVIRON["SPL_TS"]), ENVIRON["SPL_T1"] - ENVIRON["SPL_T0"], ENVIRON["SPL_EXIT"], j(ENVIRON["SPL_WS"]),
+				j(ENVIRON["SPL_CWD"]), j(ENVIRON["SPL_NAME"]), args, j(role), j(ENVIRON["CLAUDE_CODE_SESSION_ID"]),
+				j(ENVIRON["SPL_REV"]), j(FN ? F[1] : ""), cut, marks, j(err)
+			if (ENVIRON["SPL_FULL"] == "full") printf ",\"stdout\":%s", j(out)
+			print "}"
+			exit
+		}' "$@" >"$L/rec" 2>/dev/null && { cat "$L/rec" >>"$SP_LOG"; } 2>/dev/null; then
+		:
+	else
+		echo "sp: SP_LOG not written ($why): $SP_LOG" >&2
+	fi
+	exit "$st"
+fi
+
+NAME=$(basename "$0")
+# The real script, through any alias link: the freshness stamp keys on it.
+s=$0
+while [ -L "$s" ]; do
+	l=$(readlink "$s")
+	case $l in /*) s=$l ;; *) s=$(dirname "$s")/$l ;; esac
+done
+SELF=$(cd "$(dirname "$s")" && pwd -P)/$(basename "$s")
+
+# The command list (sp, sp help, sp --help): every command, one line each.
+usage() {
+	cat <<'EOF'
+sp — one script that reads and writes the waterfall, in one workspace
+usage     sp [-C dir] [--budget TOKENS] [--role bottom-up|top-down] <command> [args]
+Read (also through the nav alias):
+  def <symbol>                       where it is defined (docs -> code)
+  docs <symbol|path|D-NNN>           live docs linked to it (code -> docs)
+  module <path>                      definitions under a path, and the docs on them
+  file <path>                        a file's definitions and its docs; for a doc,
+                                     its trace and tree
+  unresolved                         live-doc mentions that resolve to nothing
+  trace <id>                         intent trace up `relates`
+  check [<id>] [--all]               what breaks navigation, and drift
+  tree <id>                          descendants with their state, next free numbers
+  outline <id>                       frontmatter, headings and item ids, with lines
+  show <id> <heading|item>..         exactly those sections or items, with lines
+  log [<count>] [--all]              sp's own call log, failures first (SP_LOG)
+Write:
+  new <kind> "<title>"               a new artifact, numbered and well formed
+  supersede <new> --of <old>         both edges: supersedes and superseded-by
+  relate <id> --to <id>              one upward relates edge
+  ledger <verb> <id> "<text>"        a ledger line: implemented, done,
+                                     not-achieved, reconcile
+  migrate [--apply] [--settle <f>]   once per repo, on the user's word: ids, links
+                                     and edges to the shape sp reads
+An artifact is named by its kind-prefixed id (task-084, adr-0034), its path, or
+a legacy short id. Every answer starts with a summary line.
+SP_LOG=<absolute path> appends one record per call to that file (sp log help).
+then      run sp <command> help for its page: usage, examples, the next step
+EOF
+}
+
+# A command's page (D16): usage, what it reads and writes, examples, next step.
+cmd_help() {
+	case $1 in
+	def) cat <<'EOF'
+sp def — where a symbol is defined, from a name a doc mentions
+usage     sp def <symbol>
+          a bare name (refresh) or a qualified one (Session.refresh)
+reads     the code index: Universal Ctags when found, else a keyword grep;
+          SP_CTAGS=<path> picks a ctags, SP_CTAGS=none forces the grep
+writes    nothing but sp's state
+example   sp def Session.refresh
+then      sp file <path> on the definition, for the docs that govern it
+EOF
+	;;
+	docs) cat <<'EOF'
+sp docs — the live docs linked to a symbol, a path, or a PRODUCT.md entry
+usage     sp docs <symbol|path> [--type adr,task,..] [--sealed] [--unlinked]
+          sp docs D-NNN|X-NNN
+options   --type     only these kinds
+          --sealed   also sealed docs (closed probes, ledgered Plans, superseded ADRs)
+          --unlinked also mentions left unlinked, with the reason
+reads     the link table: a mention links to code only on evidence
+writes    nothing but sp's state
+example   sp docs Session.refresh --type adr
+example   sp docs D-002
+then      sp show <id> Decision (or Constraints) to read only the part that binds
+EOF
+	;;
+	module) cat <<'EOF'
+sp module — definitions under a directory, and the docs on them
+usage     sp module <dir> [--kind function,class,..]
+reads     the code index and the link table
+writes    nothing but sp's state
+example   sp module src/auth
+then      sp file <path> for one file, or sp show <id> <section> for a doc it lists
+EOF
+	;;
+	file) cat <<'EOF'
+sp file — a file's definitions and the docs on it; for a doc, its trace and tree
+usage     sp file <path>
+reads     the code index, the link table; for a doc, its relates
+writes    nothing but sp's state
+budget    the first lines say how many tokens the listed docs cost, against your share
+          (--budget, else $AGENT_CONTEXT_TOKENS; 10% bottom-up, 20% top-down)
+example   sp file src/auth/session.py
+example   sp file docs/tasks/084-the-task.md
+then      read the docs it ranks first, by section: sp show <id> <section>
+EOF
+	;;
+	unresolved) cat <<'EOF'
+sp unresolved — mentions in live docs that resolve to no code or doc
+usage     sp unresolved
+reads     the link table
+writes    nothing but sp's state
+example   sp unresolved
+then      fix a stale mention in the doc that holds it, or leave it: it is counted, not guessed
+EOF
+	;;
+	trace) cat <<'EOF'
+sp trace — the intent trace: one intent line per level, up relates to the root
+usage     sp trace <id|path>
+          at each level, the first relates entry on a higher tier
+          (Plan -> Task -> Epic -> Direction -> Story -> ...); ADRs, probes and
+          same-tier entries are passed over
+reads     frontmatter: relates and intent
+writes    nothing but sp's state
+example   sp trace task-084
+then      a level with no intent line is a gap to report, never to fill in;
+          a broken or ambiguous link: sp check <that doc>
+EOF
+	;;
+	check) cat <<'EOF'
+sp check — what breaks navigation, and drift from conventions
+usage     sp check [<id|path>] [--all]
+          no argument: the whole workspace, capped at 60 lines; --all lifts the cap
+reads     frontmatter of every artifact (yq parses it when present, else awk)
+writes    nothing but sp's state
+output    break  navigation-breaking: missing or unparseable frontmatter, an id not
+                 kind-prefixed or shared, a broken or ambiguous link, supersession
+                 edges that disagree
+          drift  from conventions: status on a Direction/Epic/Task/Plan, downward
+                 relates, a missing intent, a link into another workspace
+example   sp check task-084
+example   sp check --all
+then      fix each break line as it says; run it after every write
+EOF
+	;;
+	tree) cat <<'EOF'
+sp tree — an artifact's descendants down relates, each with its state
+usage     sp tree <id|path>
+          state comes from the ledgers: Plans implemented, probes open or closed,
+          supersession; the next free number of each kind closes the answer
+reads     frontmatter and docs/*/LEDGER.md
+writes    nothing but sp's state
+example   sp tree direction-004
+then      sp show <id> <section> on the descendant you need; sp new for the next one
+EOF
+	;;
+	outline) cat <<'EOF'
+sp outline — a doc's shape: frontmatter, headings and item ids, with lines and sizes
+usage     sp outline <id|path>
+          item ids are F12, Q3, D1 and the like, leading a list item, a bold
+          paragraph or a heading
+reads     the doc (mdq decides which headings are sections, when present)
+writes    nothing but sp's state
+example   sp outline probe-2026-10-09-implement-direction-004
+then      sp show <id> <heading or item id> for exactly the parts you need
+EOF
+	;;
+	show) cat <<'EOF'
+sp show — exactly the named sections or items of a doc, as written, with lines
+usage     sp show <id|path> <heading|item id>..
+          a heading in any case, with its subsections; an item (F3) runs to the
+          next item or heading, and F3 never matches F30
+reads     the doc
+writes    nothing but sp's state
+example   sp show adr-0005 Decision
+example   sp show task-084 Goal "Out of scope"
+example   sp show probe-2026-10-09-implement-direction-004 F12 Q3
+then      a miss lists nothing: run sp outline <id> for what is there
+EOF
+	;;
+	log) cat <<'EOF'
+sp log — sp's own call log: the calls that failed or were flagged, to fix sp
+usage     sp log [<count>] [--all]
+          the last 200 records by default; identical calls fold into one row
+setup     SP_LOG=<absolute path, outside any repo>, e.g. in your shell profile;
+          SP_LOG_LEVEL=full also stores each answer. Unset, sp writes no log.
+record    one JSON line per call: ts, dur, exit, ws (the workspace), cwd, name,
+          argv, role, session, rev (sp's checksum), summary, cut, marks
+          (ambiguous, broken), stderr; stdout with SP_LOG_LEVEL=full
+rows      fail: a non-zero exit or stderr; flag: a cut answer (+N more) or one
+          that says ambiguous or broken. Each ends with a rerun line on this sp;
+          "older sp" means the call ran on a different version.
+reads     $SP_LOG, from anywhere: no workspace
+writes    nothing but the log's own record of this call
+example   sp log
+example   sp log 1000
+then      re-run one; a real defect goes to bottom-up with the record as trigger
+EOF
+	;;
+	new) cat <<'EOF'
+sp new — a new artifact: the next number, a kind-prefixed id, the section skeleton
+usage     sp new <kind> "<title>" [--relates <id>,..] [--intent "<one sentence>"]
+kinds     direction epic task plan adr probe product-direction product-epic story
+          product-probe (probes are dated: probe-YYYY-MM-DD-slug)
+writes    one new file under docs/; numbers are taken under a lock
+example   sp new task "The cache is warmed at boot" --relates epic-012
+example   sp new adr "Sessions are refreshed by the server" --relates task-084
+example   sp new probe "Login loops after refresh" --relates task-084,adr-0031
+then      fill its sections; sp check <id> on it
+EOF
+	;;
+	supersede) cat <<'EOF'
+sp supersede — record that one artifact replaces another: both edges, one call
+usage     sp supersede <successor> --of <predecessor>
+writes    supersedes: [<predecessor>] on the successor, and superseded-by:
+          [<successor>] on the predecessor, nothing else on it (adr-0005);
+          running it twice changes nothing
+example   sp supersede adr-0031 --of adr-0012
+then      say what was absorbed, and whether it is partial, in the successor's body;
+          sp check on both
+EOF
+	;;
+	relate) cat <<'EOF'
+sp relate — add one upward relates edge
+usage     sp relate <id> --to <parent id>
+          refuses a broken, ambiguous or downward link, and says what to do
+writes    one item in the doc's relates
+example   sp relate task-084 --to epic-012
+then      sp check <id>
+EOF
+	;;
+	ledger) cat <<'EOF'
+sp ledger — append one ledger line (adr-0004: done is a line, not a status)
+usage     sp ledger implemented <plan> "<N>/<N> passed"
+          sp ledger done <task> "<the effect seen, where>"
+          sp ledger not-achieved <task> "<what was seen>"
+          sp ledger reconcile <probe> "<one-line outcome>"
+writes    one line in docs/plans/, docs/tasks/ or docs/probes/LEDGER.md; reconcile
+          also sets the probe's status (a product probe: resolved)
+example   sp ledger implemented plan-005 "7/7 passed"
+example   sp ledger reconcile probe-2026-10-09-login-loop "fixed in the refresher"
+then      nothing to check: the line is the record
+EOF
+	;;
+	migrate) cat <<'EOF'
+sp migrate — bring a repo, once, to the shape sp reads (Task 027, adr-0007)
+usage     sp migrate                      preview: writes nothing in the repo
+          sp migrate --all                the same, with the whole diff
+          sp migrate --apply [--settle <file>]
+what      kind-prefixed ids and links; both supersession edges, also from a legacy
+          status: superseded by ...; notes out of supersedes into a
+          "Supersession note:" line in the body; frontmatter for a doc with none.
+          Never status, never file names.
+settle    a link no rule settles (upward, then not-downward) is a line in the settle
+          file: doc, key, raw value, answer, comment. A guess is pre-filled from
+          what the doc's body cites. Answer each line with a candidate's id, any
+          doc's id where it lists none, or leave. A blank or wrong answer refuses
+          --apply and writes nothing.
+writes    preview: the settle file, the diff and the left list, under sp's state;
+          --apply: the changed docs under docs/, nothing else
+rule      run --apply only on the user's word, one repo at a time, after they read
+          the diff and the settle file
+example   sp migrate
+example   sp migrate --apply --settle .git/nav/migrate.settle
+then      sp check --all; commit the repo's migration as one commit
+EOF
+	;;
+	*) echo "sp: no command '$1': run sp help" >&2; exit 2 ;;
+	esac
+}
+
+die() {
+	echo "sp: $*" >&2
+	exit 2
+}
+
+# An answer held to the output contract (Direction 004 Constraint 1): no line
+# over 200 bytes, a longer one wraps at a space, continued under a blank label.
+# Over <cap> lines (0: no cap) it stops one short and says how many more.
+# held <file> <cap> <hint>
+held() {
+	awk -v cap="$2" -v hint="$3" '
+	function put(l) { L[++n] = l }
+	{
+		l = $0
+		while (length(l) > 200) {
+			for (c = 200; c > 40 && substr(l, c, 1) != " "; c--) ;
+			if (c <= 40) c = 200
+			put(substr(l, 1, c == 200 ? 200 : c - 1)); l = "          " substr(l, c + 1); sub(/^ +/, "          ", l)
+		}
+		put(l)
+	}
+	END {
+		if (!cap || n <= cap) { for (i = 1; i <= n; i++) print L[i]; exit }
+		for (i = 1; i < cap; i++) print L[i]
+		printf "more      +%d more lines (%s)\n", n - cap + 1, hint
+	}' "$1"
+}
+
+# --- Arguments ---
+
+C=
+BUDGET=${AGENT_CONTEXT_TOKENS:-}
+ROLE=bottom-up
+while [ $# -gt 0 ]; do
+	case $1 in
+	-C) [ $# -ge 2 ] || die "-C needs a directory"; C=$2; shift 2 ;;
+	--budget) [ $# -ge 2 ] || die "--budget needs a token count"; BUDGET=$2; shift 2 ;;
+	--role) [ $# -ge 2 ] || die "--role needs a value"; ROLE=$2; shift 2 ;;
+	-h | --help) usage; exit 0 ;;
+	-*) die "unknown option: $1: run sp help" ;;
+	*) break ;;
+	esac
+done
+[ $# -ge 1 ] || { usage; exit 0; }
+Q=$1
+shift
+# `help` is a reserved word, never a doc id or title: sp help [<command>], or
+# sp <command> ... help|--help|-h, in any slot.
+if [ "$Q" = help ]; then
+	if [ $# -ge 1 ]; then cmd_help "$1"; else usage; fi
+	exit 0
+fi
+case $Q in
+def | docs | module | file | trace | unresolved | check | tree | outline | show | log | new | supersede | relate | ledger | migrate)
+	case ${1:-} in help | --help | -h) cmd_help "$Q"; exit 0 ;; esac
+	for a in "$@"; do case $a in help | --help | -h) cmd_help "$Q"; exit 0 ;; esac; done
+	;;
+*) die "no command '$Q': run sp help" ;;
+esac
+case $Q in
+new | supersede | relate | ledger | migrate)
+	[ "$NAME" != nav ] || die "nav is read-only and has no verb '$Q': run sp $Q"
+	;;
+esac
+SELS=
+TYPES= SEALED=0 UNLINKED=0 KIND= ARG= ALL=0 ARG2= ARG3= RELATES= INTENT= OF= TO= NP=0 APPLY=0 SETTLE=
+while [ $# -gt 0 ]; do
+	case $1 in
+	--type) [ $# -ge 2 ] || die "--type needs a value"; TYPES=$2; shift 2 ;;
+	--sealed) SEALED=1; shift ;;
+	--unlinked) UNLINKED=1; shift ;;
+	--all) ALL=1; shift ;;
+	--apply) [ "$Q" = migrate ] || die "--apply is for sp migrate"; APPLY=1; shift ;;
+	--settle)
+		[ "$Q" = migrate ] || die "--settle is for sp migrate"
+		[ $# -ge 2 ] || die "--settle needs the settle file sp migrate wrote"
+		case $2 in /*) SETTLE=$2 ;; *) SETTLE=$PWD/$2 ;; esac
+		shift 2
+		;;
+	--kind) [ $# -ge 2 ] || die "--kind needs a value"; KIND=$2; shift 2 ;;
+	--relates | --intent | --of | --to)
+		[ $# -ge 2 ] || die "$1 needs a value"
+		case $1 in --relates) RELATES=$2 ;; --intent) INTENT=$2 ;; --of) OF=$2 ;; --to) TO=$2 ;; esac
+		shift 2
+		;;
+	-*) die "unknown option: $1: run sp --help" ;;
+	*)
+		NP=$((NP + 1))
+		[ "$Q" != show ] || [ "$NP" -lt 2 ] || SELS="${SELS:+$SELS
+}$1"
+		case $NP in 1) ARG=$1 ;; 2) ARG2=$1 ;; 3) ARG3=$1 ;; *) [ "$Q" = show ] || die "too many arguments: run sp --help" ;; esac
+		shift
+		;;
+	esac
+done
+case $Q in
+def | docs | module | file | trace | tree | outline | show) [ -n "$ARG" ] || die "$Q needs an argument: run sp --help" ;;
+esac
+SEL=
+case $Q in
+def | docs | module | file | trace | check | unresolved | tree | outline | log) [ "$NP" -le 1 ] || die "$Q takes one argument" ;;
+migrate) [ "$NP" = 0 ] || die "migrate takes no argument: sp migrate [--apply] [--settle <file>]" ;;
+show) [ -n "$ARG2" ] || die "show needs a doc and a section: sp show adr-0005 Decision (sp outline lists them)" ;;
+new) [ -n "$ARG2" ] || die 'new needs a kind and a title: sp new task "<title>"' ;;
+supersede) [ -n "$ARG" ] && [ -n "$OF" ] || die "supersede needs both: sp supersede <successor> --of <predecessor>" ;;
+relate) [ -n "$ARG" ] && [ -n "$TO" ] || die "relate needs both: sp relate <id> --to <parent id>" ;;
+ledger) [ -n "$ARG3" ] || die 'ledger needs a verb, an id and a text: sp ledger done task-084 "<effect seen>"' ;;
+esac
+case $BUDGET in *[!0-9]*) die "budget must be a token count: $BUDGET" ;; esac
+case $ROLE in
+bottom-up) PCT=10 ;;
+top-down) PCT=20 ;;
+*) die "role is bottom-up or top-down: $ROLE" ;;
+esac
+
+# --- sp log: the call log is sp's own state, read from anywhere (Direction 005) ---
+# Recent records, failures first (non-zero exit, stderr), then flagged ones
+# (cut, ambiguous, broken). Identical calls fold into one row with a count. Each
+# row ends with a rerun line: the record's cwd and argv, on this sp.
+
+q_log() {
+	awk -v me="$(dirname "$SELF")" -v rev="$1" -v total="$2" -v window="$3" '
+	function rep(s, ch, to,   r, i) {
+		r = ""
+		while ((i = index(s, ch)) > 0) { r = r substr(s, 1, i - 1) to; s = substr(s, i + 1) }
+		return r s
+	}
+	function unesc(s,   r, i, c) {
+		r = ""
+		while ((i = index(s, "\\")) > 0) {
+			r = r substr(s, 1, i - 1)
+			c = substr(s, i + 1, 1)
+			if (c == "n") r = r "\n"
+			else if (c == "t") r = r "\t"
+			else if (c == "r") r = r "\r"
+			else if (c == "u") { r = r "?"; s = substr(s, i + 6); continue }
+			else r = r c
+			s = substr(s, i + 2)
+		}
+		return r s
+	}
+	function arr(k, s,   n) {
+		n = 0
+		while (match(s, /^"([^"\\]|\\.)*"/)) {
+			A[k, ++n] = unesc(substr(s, 2, RLENGTH - 2))
+			s = substr(s, RLENGTH + 1)
+			sub(/^,/, "", s)
+		}
+		R[k] = n
+	}
+	# One record into R[key] (an array key holds its length, items in A[key, i]).
+	# stdout is last and never needed here, so parsing stops at it.
+	function parse(s,   k, m) {
+		split("", R); split("", A)
+		if (s !~ /^\{/) return 0
+		s = substr(s, 2)
+		while (match(s, /^,?"[a-z]+":/)) {
+			k = substr(s, 1, RLENGTH); sub(/^,?"/, "", k); sub(/":$/, "", k)
+			s = substr(s, RLENGTH + 1)
+			if (k == "stdout") break
+			if (match(s, /^"([^"\\]|\\.)*"/)) { m = RLENGTH; R[k] = unesc(substr(s, 2, m - 2)) }
+			else if (match(s, /^\[("([^"\\]|\\.)*"(,"([^"\\]|\\.)*")*)?\]/)) { m = RLENGTH; arr(k, substr(s, 2, m - 2)) }
+			else if (match(s, /^[-0-9a-z]+/)) { m = RLENGTH; R[k] = substr(s, 1, m) }
+			else return 0
+			s = substr(s, m + 1)
+		}
+		return ("exit" in R) && ("argv" in R) && ("cwd" in R)
+	}
+	function sq(s) { return "\047" rep(s, "\047", "\047\\\047\047") "\047" }
+	# An argument for a one-line rerun: bare, single-quoted, or, when it holds a
+	# tab or newline, rebuilt by printf so the row stays one line.
+	function q(s) {
+		if (s ~ /^[A-Za-z0-9_.\/:,=@%+-]+$/) return s
+		if (s !~ /[\t\n\r]/) return sq(s)
+		s = rep(rep(s, "\\", "\\\\"), "%", "%%")
+		return "\"$(printf " sq(rep(rep(rep(s, "\n", "\\n"), "\t", "\\t"), "\r", "\\r")) ")\""
+	}
+	function first(s) { sub(/\n.*/, "", s); return length(s) > 150 ? substr(s, 1, 150) "..." : s }
+	{
+		n++
+		if (!parse($0)) { bad++; next }
+		args = ""
+		for (i = 1; i <= R["argv"]; i++) args = args " " q(A["argv", i])
+		fail = R["exit"] != 0 || R["stderr"] != ""
+		marks = R["cut"] == "true" ? "cut" : ""
+		for (i = 1; i <= R["marks"]; i++) marks = marks (marks == "" ? "" : ", ") A["marks", i]
+		if (!fail && marks == "") { ok++; next }
+		key = R["ws"] SUBSEP R["cwd"] SUBSEP R["name"] args SUBSEP R["exit"]
+		if (!(key in C)) { G[++ng] = key; GF[ng] = fail }
+		C[key]++
+		LAST[key] = n
+		TS[key] = R["ts"]
+		LINE[key] = sprintf("%s · exit %s%s · %s%s", R["ts"], R["exit"], marks == "" ? "" : " · " marks, R["name"], args)
+		WHY[key] = fail ? (R["stderr"] != "" ? "stderr " first(R["stderr"]) : "summary " first(R["summary"])) : "summary " first(R["summary"])
+		WS[key] = R["ws"]
+		OLD[key] = R["rev"] != rev
+		RERUN[key] = "cd " q(R["cwd"]) " && " q(me "/" (R["name"] == "nav" ? "nav" : "sp")) args
+	}
+	function show(tier,   i, k, c, o, N, x, y, t) {
+		c = 0
+		for (i = 1; i <= ng; i++) if (GF[i] == (tier == "fail")) O[++c] = G[i]
+		# most recent first
+		for (x = 2; x <= c; x++) { t = O[x]; for (y = x - 1; y >= 1 && LAST[O[y]] < LAST[t]; y--) O[y + 1] = O[y]; O[y + 1] = t }
+		for (i = 1; i <= c; i++) {
+			k = O[i]
+			printf("%-9s %s%s%s\n", tier, (C[k] > 1) ? "×" C[k] " · last " : "", LINE[k], OLD[k] ? " · older sp" : "")
+			printf "          ws %s · %s\n", WS[k], WHY[k]
+			printf "rerun     %s\n", RERUN[k]
+		}
+		return c
+	}
+	END {
+		nf = 0; nl = 0
+		for (i = 1; i <= ng; i++) if (GF[i]) nf += C[G[i]]; else nl += C[G[i]]
+		printf "log       %d of %d records%s · %d failed · %d flagged · %d ok%s\n", n, total, window, nf, nl, ok + 0, bad ? " · " bad " unreadable" : ""
+		if (!ng) { print "then      nothing failed or flagged: re-run recent calls by eye, or widen with sp log --all"; exit }
+		show("fail")
+		show("flag")
+		print "then      re-run one, confirm the defect, then bottom-up with the record as its trigger"
+	}'
+}
+
+if [ "$Q" = log ]; then
+	LOGF=${SP_LOG:-}
+	[ -n "$LOGF" ] || die "SP_LOG is unset, so no call is logged: set it to an absolute path outside any repo (sp log help)"
+	[ -s "$LOGF" ] || die "SP_LOG names $LOGF, which holds no records yet"
+	case $ARG in '' | *[!0-9]*) [ -z "$ARG" ] || die "log takes a record count: sp log 500" ;; esac
+	N=${ARG:-200}
+	T=$(mktemp -d "${TMPDIR:-/tmp}/sp.XXXXXX")
+	trap 'rm -rf "$T"' EXIT INT TERM
+	tot=$(wc -l <"$LOGF" | tr -d ' ')
+	rev=$(cksum <"$SELF" | cut -d' ' -f1)
+	set +e
+	(
+		set -e
+		echo "sp log · $LOGF · awk"
+		if [ "$ALL" = 1 ]; then
+			q_log "$rev" "$tot" "" <"$LOGF"
+		else
+			tail -n "$N" "$LOGF" | q_log "$rev" "$tot" " (the last $N)"
+		fi
+	) >"$T/answer"
+	st=$?
+	set -e
+	cap=60
+	[ "$ALL" = 0 ] || cap=0
+	held "$T/answer" "$cap" "sp log --all prints them all"
+	exit "$st"
+fi
+
+# --- Workspace: the git root of the queried path, never a guess (D17) ---
+
+BASE=${C:-.}
+[ -d "$BASE" ] || die "no such directory: $BASE"
+BASE=$(cd "$BASE" && pwd -P)
+
+TARGET=
+case $Q in
+module | file | trace | check | tree | outline | show) TARGET=$ARG ;;
+docs) case $ARG in */*) TARGET=$ARG ;; esac ;;
+esac
+
+START=$BASE TABS=
+if [ -n "$TARGET" ]; then
+	case $TARGET in /*) t=$TARGET ;; *) t=$BASE/$TARGET ;; esac
+	if [ -d "$t" ]; then
+		TABS=$(cd "$t" && pwd -P)
+		START=$TABS
+	elif [ -e "$t" ]; then
+		START=$(cd "$(dirname "$t")" && pwd -P)
+		TABS=$START/$(basename "$t")
+	fi
+fi
+
+GIT=0
+if ROOT=$(git -C "$START" rev-parse --show-toplevel 2>/dev/null); then
+	GIT=1
+	ROOT=$(cd "$ROOT" && pwd -P)
+elif [ -n "$C" ]; then
+	ROOT=$BASE
+else
+	echo "sp: $START is not inside a git workspace; name one with -C or a path." >&2
+	found=0
+	for d in "$BASE"/*/; do
+		[ -e "$d.git" ] || continue
+		[ "$found" = 1 ] || echo "candidates:" >&2
+		found=1
+		echo "  ${d%/}" >&2
+	done
+	exit 3
+fi
+
+# The target, relative to the workspace root.
+REL=
+if [ -n "$TABS" ]; then
+	case $TABS in
+	"$ROOT") REL= ;;
+	"$ROOT"/*) REL=${TABS#"$ROOT"/} ;;
+	*) die "$TARGET is outside workspace $ROOT" ;;
+	esac
+elif [ -n "$TARGET" ]; then
+	REL=${TARGET#./}
+fi
+
+if [ "$GIT" = 1 ]; then
+	GCD=$(git -C "$ROOT" rev-parse --git-common-dir)
+	case $GCD in /*) ;; *) GCD=$ROOT/$GCD ;; esac
+	STATE=$GCD/nav
+else
+	h=$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1)
+	STATE=${XDG_CACHE_HOME:-$HOME/.cache}/nav/$h
+fi
+mkdir -p "$STATE"
+cd "$ROOT"
+# The call log's wrapper asks which workspace this call resolved (Direction 005).
+[ -z "${SP_LOG_META:-}" ] || { printf '%s\n%s\n' "$ROOT" "$ROLE" >"$SP_LOG_META"; } 2>/dev/null || :
+
+# --- Tools: Universal Ctags only; Apple's BSD ctags shadows it on PATH (F10) ---
+
+is_uctags() { [ -x "$1" ] && "$1" --version 2>/dev/null | grep -q 'Universal Ctags'; }
+
+find_ctags() {
+	want=${SP_CTAGS:-${NAV_CTAGS:-}}
+	case $want in
+	none) return 1 ;;
+	'') ;;
+	*) is_uctags "$want" && { echo "$want"; return 0; }; return 1 ;;
+	esac
+	oifs=$IFS
+	IFS=:
+	for d in $PATH /opt/homebrew/bin /usr/local/bin /home/linuxbrew/.linuxbrew/bin; do
+		for n in ctags uctags universal-ctags; do
+			if is_uctags "$d/$n"; then
+				IFS=$oifs
+				echo "$d/$n"
+				return 0
+			fi
+		done
+	done
+	IFS=$oifs
+	return 1
+}
+
+if CTAGS=$(find_ctags); then MODE=ctags; else MODE=grep CTAGS=; fi
+
+# mdq parses Markdown for `show`; awk reads headings otherwise.
+MDQ=
+case ${SP_MDQ:-} in
+none) ;;
+*) m=${SP_MDQ:-mdq}; "$m" --version >/dev/null 2>&1 && MDQ=$m ;;
+esac
+
+# yq (mikefarah's) parses frontmatter for `check`; awk reads it otherwise.
+YQ=
+case ${SP_YQ:-} in
+none) ;;
+*) y=${SP_YQ:-yq}; "$y" --version 2>/dev/null | grep -q mikefarah && YQ=$y ;;
+esac
+
+# --- Shared awk ---
+
+# The one frontmatter reader. Feed it each line between the `---` fences with
+# fm_line(); FMS[key] is a key's raw scalar, and FM[key, 1..FMC[key]] its list
+# items, written inline ([a, b]), as a scalar, or as a block list.
+AWK_FM='
+function fm_reset() { split("", FM); split("", FMC); split("", FMS); fm_k = "" }
+function fm_add(k, v) {
+	gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", v)
+	# A link is one token. Prose after it, `path (rules 4-6: ...)`, is a note,
+	# and `path: note` is a note YAML reads as a mapping.
+	sub(/[ \t].*$/, "", v); gsub(/["\047]+$/, "", v); sub(/:$/, "", v)
+	if (v != "") FM[k, ++FMC[k]] = v
+}
+function fm_line(l,  k, v, n, a, i) {
+	if (fm_k != "" && l ~ /^[ \t]*-[ \t]+/) { v = l; sub(/^[ \t]*-[ \t]+/, "", v); fm_add(fm_k, v); return }
+	fm_k = ""
+	if (!match(l, /^[A-Za-z_][A-Za-z0-9_-]*:/)) return
+	k = substr(l, 1, RLENGTH - 1); v = substr(l, RLENGTH + 1); sub(/^[ \t]+/, "", v); sub(/[ \t]+$/, "", v)
+	FMS[k] = v
+	sub(/[ \t]+#.*$/, "", v)
+	if (v == "") { fm_k = k; return }
+	if (v ~ /^\[/) {
+		sub(/^\[/, "", v); sub(/\][ \t]*$/, "", v)
+		n = split(v, a, ",")
+		for (i = 1; i <= n; i++) fm_add(k, a[i])
+	} else fm_add(k, v)
+}
+# Reads the frontmatter of file f; returns 0 when it has none.
+function fm_read(f,  l, n, ok) {
+	fm_reset(); n = 0; ok = 0
+	while ((getline l < f) > 0) {
+		if (++n == 1) { if (l != "---") break; continue }
+		if (l == "---") { ok = 1; break }
+		fm_line(l)
+	}
+	close(f)
+	return ok
+}
+'
+
+# Artifact kinds, tiers and the one resolver (ADR 0006). The id index is
+# "path<TAB>id<TAB>kind<TAB>number<TAB>stem<TAB>status", one row per doc.
+AWK_RESOLVE='
+function kindof(p) {
+	if (p ~ /^docs\/product\/directions\/[^\/]+\.md$/) return "product-direction"
+	if (p ~ /^docs\/product\/epics\/[^\/]+\.md$/) return "product-epic"
+	if (p ~ /^docs\/product\/stories\/[^\/]+\.md$/) return "story"
+	if (p ~ /^docs\/(product\/)?probes\/[^\/]+\.md$/) return "probe"
+	if (p ~ /^docs\/directions\/[^\/]+\.md$/) return "direction"
+	if (p ~ /^docs\/epics\/[^\/]+\.md$/) return "epic"
+	if (p ~ /^docs\/tasks\/[^\/]+\.md$/) return "task"
+	if (p ~ /^docs\/plans\/[^\/]+\.md$/) return "plan"
+	if (p ~ /^docs\/adr\/[^\/]+\.md$/) return "adr"
+	return "doc"
+}
+# The upward order of `conventions`: a parent sits higher than its child.
+# ADRs and probes are never a parent; any other doc counts as higher.
+function tier(k) {
+	return k == "plan" ? 1 : k == "task" ? 2 : k == "epic" ? 3 : k == "direction" ? 4 : \
+		k == "story" ? 5 : k == "product-epic" ? 6 : k == "product-direction" ? 7 : \
+		(k == "adr" || k == "probe") ? 0 : 99
+}
+function rs_load(f,  l, a) {
+	while ((getline l < f) > 0) {
+		split(l, a, "\t"); rs_n++
+		R_P[rs_n] = a[1]; R_I[rs_n] = a[2]; R_K[rs_n] = a[3]; R_N[rs_n] = a[4]; R_S[rs_n] = a[5]
+		R_ST[a[1]] = a[6]; R_IS[a[1]] = 1; R_KP[a[1]] = a[3]; X_PI[a[1]] = rs_n
+		if (a[2] != "") X_I[a[2]] = X_I[a[2]] " " rs_n
+		X_S[a[5]] = X_S[a[5]] " " rs_n
+		if (a[4] != "") { X_KN[a[3], a[4] + 0] = X_KN[a[3], a[4] + 0] " " rs_n; if (a[3] != "doc") X_N[a[4]] = X_N[a[4]] " " rs_n }
+	}
+	close(f)
+}
+# The kind-prefixed id doc i should carry (ADR 0006).
+function want(i,  k) {
+	k = R_K[i]
+	if (k == "probe") return R_S[i] ~ /^probe-/ ? R_S[i] : "probe-YYYY-MM-DD-slug"
+	return k "-" (R_N[i] != "" ? R_N[i] : (k == "adr" ? "NNNN" : "NNN"))
+}
+# How to cite path p in a link: its kind-prefixed id, or the path for a doc
+# that is not an artifact (docs/PRODUCT.md).
+function canon(p) { return (p in X_PI) && R_K[X_PI[p]] != "doc" ? want(X_PI[p]) : p }
+# rs_take(list, kind): the candidates in an index list (of one kind, if given).
+function rs_take(list, k,  n, c, j) {
+	n = split(list, c, " ")
+	for (j = 1; j <= n; j++) if ((k == "" || R_K[c[j]] == k) && !((c[j]) in RS_SEEN)) {
+		RS_SEEN[c[j]] = 1; RS_C++; RS_LIST = RS_LIST (RS_LIST != "" ? " " : "") R_P[c[j]]; RS_LAST = R_P[c[j]]
+	}
+}
+function rs_clear() { RS_C = 0; RS_LIST = ""; RS_LAST = ""; split("", RS_SEEN) }
+# rs_miss(ref): what to do when ref names no doc. For a kind-prefixed id, the
+# highest id of that kind here; sp check never lists a doc that does not exist.
+function rs_miss(ref,  r, k, i, hi, best) {
+	r = ref; sub(/#.*$/, "", r); gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", r)
+	if (r ~ /\// || r ~ /\.md$/) return "no doc at that path"
+	if (r !~ /^(product-direction|product-epic|direction|epic|task|plan|adr|story)-[0-9]+$/)
+		return "name it by kind-prefixed id (task-084, adr-0034) or path"
+	k = r; sub(/-[0-9]+$/, "", k); hi = -1
+	for (i = 1; i <= rs_n; i++) if (R_K[i] == k && R_N[i] != "" && R_N[i] + 0 > hi) { hi = R_N[i] + 0; best = i }
+	return hi < 0 ? "there is no " k " here" : "the highest " k " here is " want(best)
+}
+# rs(ref, from[, same]): the one doc ref names, or "". RS_C counts the
+# candidates and RS_LIST lists them (several: ambiguous; none: broken). `from`
+# is the linking doc, for the upward rule; `same` (a supersession edge) prefers
+# a doc of its own kind first.
+function rs(ref, from, same,  r, k, num, c, pk, np, j, a) {
+	r = ref; sub(/#.*$/, "", r); gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", r)
+	rs_clear()
+	if (r == "") return ""
+	if (r ~ /\// || r ~ /\.md$/) { sub(/^\.\//, "", r); if (r in R_IS) { RS_C = 1; RS_LIST = r; return r }; return "" }
+	if (r ~ /^(product-direction|product-epic|direction|epic|task|plan|adr|story)-[0-9]+$/) {
+		# Only an artifact of that kind carries the id: a doc outside the kind
+		# directories (in a nested fixture) is passed over, whatever its id: says.
+		k = r; sub(/-[0-9]+$/, "", k); num = r; sub(/^.*-/, "", num); num += 0
+		rs_take(X_I[r], k)
+		if (RS_C > 1) { RS_C = 2; return "" }
+		if (RS_C == 0) rs_take(X_KN[k, num], "")
+		return RS_C == 1 ? RS_LAST : ""
+	}
+	# A legacy short id: an exact `id:` or file stem, and for a bare number
+	# the artifacts with that file number, digit for digit ("0006" fits an
+	# ADR, "006" a Task or a Plan).
+	rs_take(X_I[r], ""); rs_take(X_S[r], "")
+	if (r ~ /^[0-9]+$/) rs_take(X_N[r], "")
+	if (RS_C <= 1) return RS_C == 1 ? RS_LAST : ""
+	k = kindof(from)
+	pk = k == "plan" ? "task" : k == "task" ? "epic direction story" : k == "epic" ? "direction product-direction" : ""
+	if (same) pk = k " " pk
+	np = split(pk, a, " "); c = RS_LIST
+	for (j = 1; j <= np; j++) {
+		rs_clear(); rs_take(X_I[r], a[j]); rs_take(X_S[r], a[j])
+		if (r ~ /^[0-9]+$/) rs_take(X_N[r], a[j])
+		if (RS_C == 1) return RS_LAST
+	}
+	# The not-downward rule (adr-0007): relates points up, so a candidate on a
+	# lower tier than the linking doc is no candidate; a same-tier one may be.
+	if (tier(k) >= 1) {
+		np = split(c, a, " "); RS_C = 0
+		for (j = 1; j <= np; j++) if (!(tier(R_KP[a[j]]) >= 1 && tier(R_KP[a[j]]) < tier(k))) { RS_C++; RS_LAST = a[j] }
+		if (RS_C == 1) { RS_LIST = RS_LAST; return RS_LAST }
+	}
+	RS_C = 2; RS_LIST = c
+	return ""
+}
+'
+
+# The well-formedness rules (Task 023), over the id index. Inputs: -v idsf,
+# -v yqf (path<TAB>ok|err<TAB>tags or message; may be empty), -v only (one path,
+# or empty for the workspace). Prints "sev<TAB>path<TAB>key<TAB>message", breaks
+# first. sev is "break" (navigation-breaking) or "drift" (from conventions).
+AWK_CHECK='
+function add(sev, p, key, msg) { np++; PS[np] = sev; PP[np] = p; PK[np] = key; PM[np] = msg; return 1 }
+function isart(i) { return R_K[i] != "doc" && R_S[i] != "LEDGER" }
+function linkkey(k) { return k == "relates" || k == "supersedes" || k == "superseded-by" }
+# A raw link item: a mapping (`- path: note`) or a note after the link.
+function rawitem(p, key, v, n) {
+	gsub(/^[ \t]+|[ \t]+$/, "", v)
+	if (v ~ /^\{/ || v ~ /^[^"\047 ]+:([ \t]|$)/) RAWMAP = add("break", p, key, "item " n " is a mapping, not a link: move the note into the body (sp migrate does)")
+	else if (v ~ /^["\047]/ ? v !~ /^("[^"]*"|\047[^\047]*\047)$/ : v ~ /[ \t]/) add("break", p, key, "item " n " carries a note after the link: move it into the body (sp migrate does)")
+}
+function scan(i,  p, l, n, ok, k, v, a, m, j, cnt, bad, first) {
+	p = R_P[i]; n = 0; ok = 0; cnt = 0; fm_reset(); k = ""; first = ""; RAWMAP = 0
+	while ((getline l < p) > 0) {
+		if (++n == 1) { first = l; if (l != "---") break; continue }
+		if (l == "---") { ok = 1; break }
+		if (!bad && l !~ /^[A-Za-z_][A-Za-z0-9_-]*:([ \t]|$)/ && l !~ /^[ \t]+[^ \t]/ && l !~ /^[ \t]*(#.*)?$/) bad = n
+		if (l ~ /^[ \t]+-[ \t]+/ && linkkey(k)) { v = l; sub(/^[ \t]*-[ \t]+/, "", v); rawitem(p, k, v, ++cnt) }
+		else if (match(l, /^[A-Za-z_][A-Za-z0-9_-]*:/)) {
+			k = substr(l, 1, RLENGTH - 1); v = substr(l, RLENGTH + 1); sub(/^[ \t]+/, "", v); sub(/[ \t]+$/, "", v); cnt = 0
+			if (!bad && v ~ /^"/ && v !~ /^"([^"\\]|\\.)*"([ \t]*#.*)?$/) bad = n
+			if (!bad && v ~ /^\[/ && v !~ /\]([ \t]*#.*)?$/) bad = n
+			if (linkkey(k) && v ~ /^\[/) { sub(/^\[/, "", v); sub(/\][ \t]*$/, "", v); m = split(v, a, ","); for (j = 1; j <= m; j++) rawitem(p, k, a[j], j) }
+			else if (linkkey(k) && v != "") rawitem(p, k, v, 1)
+		}
+		fm_line(l)
+	}
+	close(p)
+	if (first != "---") { add("break", p, "frontmatter", "none: add id, title, created and relates (sp migrate adds them)"); return 0 }
+	if (!ok) { add("break", p, "frontmatter", "no closing ---: end the frontmatter with a --- line"); return 0 }
+	if (p in YQ) { if (YQ[p] != "ok") add("break", p, "frontmatter", "does not parse (yq): " YQM[p]) }
+	else if (bad) add("break", p, "frontmatter", "line " bad " does not parse: fix the YAML there")
+	if (p in YQ && YQ[p] == "ok" && YQM[p] ~ /!!(map|seq)/ && !RAWMAP) add("break", p, "links", "a link item is a mapping or list, not a string: move the note into the body (sp migrate does)")
+	return 1
+}
+BEGIN {
+	rs_load(idsf)
+	if (yqf != "") while ((getline l < yqf) > 0) { split(l, a, "\t"); YQ[a[1]] = a[2]; YQM[a[1]] = a[3] }
+	for (i = 1; i <= rs_n; i++) {
+		if (!isart(i)) continue
+		p = R_P[i]; k = R_K[i]; na++
+		if (!scan(i)) continue
+		for (j = 1; j <= 3; j++) { key = j == 1 ? "id" : j == 2 ? "title" : "created"; if (FMS[key] == "") add("break", p, key, "missing: add it" (key == "id" ? " (want " want(i) ")" : "")) }
+		id = FMS["id"]; gsub(/^["\047]|["\047]$/, "", id)
+		if (id != "") {
+			IDC[id]++; IDP[id] = IDP[id] (IDP[id] != "" ? " " : "") p
+			if (k == "probe" ? id !~ /^probe-/ : id != k "-" R_N[i] && !(R_N[i] == "" && id ~ ("^" k "-[0-9]+$"))) add("break", p, "id", (id == p ? "is the path" : id " is not kind-prefixed") ": want " want(i) " (sp migrate)")
+		}
+		for (j = 1; j <= 3; j++) {
+			key = j == 1 ? "relates" : j == 2 ? "supersedes" : "superseded-by"
+			for (m = 1; m <= FMC[key]; m++) {
+				v = FM[key, m]; t = rs(v, p, key != "relates")
+				if (t == "" && RS_C > 1) add("break", p, key, v " is ambiguous (" RS_LIST "): use a kind-prefixed id")
+				else if (t == "" && (v ~ /\// && v !~ /^(\.\/)?docs\// || v ~ /^[A-Za-z0-9_.-]+:[^\/]/)) add("drift", p, key, v " names another workspace: not followed")
+				else if (t == "") add("break", p, key, v " resolves to no doc: fix the id or path")
+				else if (key == "supersedes") { SUPP[p, t] = 1; SUPL[++ns] = p SUBSEP t; SUPT[t] = 1 }
+				else if (key == "superseded-by") { BYP[t, p] = 1; BYL[++nb] = t SUBSEP p }
+				else if (tier(k) >= 1 && tier(R_KP[t]) >= 1 && tier(R_KP[t]) < tier(k)) add("drift", p, key, v " points down: relates points up (child to parent)")
+			}
+		}
+		st = FMS["status"]
+		if (k == "direction" || k == "epic" || k == "task" || k == "plan") {
+			if (st != "") add("drift", p, "status", "written on a " k ": drop it, state lives in the ledgers (ADR 0004)")
+			if (k != "plan" && FMS["intent"] == "") add("drift", p, "intent", "missing: add one when the Goal or Problem is settled")
+		}
+		if (st ~ /^["\047]?superseded/ && !FMC["superseded-by"]) LEG[p] = 1
+	}
+	for (id in IDC) if (IDC[id] > 1) { m = split(IDP[id], a, " "); for (j = 1; j <= m; j++) add("break", a[j], "id", id " is shared by " m " docs: " IDP[id] " (sp migrate)") }
+	for (j = 1; j <= ns; j++) { split(SUPL[j], a, SUBSEP); if (!((a[1], a[2]) in BYP)) add("break", a[2], "superseded-by", "missing " a[1] ", which supersedes it: run sp supersede " a[1] " --of " a[2]) }
+	for (j = 1; j <= nb; j++) { split(BYL[j], a, SUBSEP); if (!((a[1], a[2]) in SUPP)) add("break", a[1], "supersedes", "missing " a[2] ", which names it in superseded-by: run sp supersede " a[1] " --of " a[2]) }
+	for (p in LEG) if (!(p in SUPT)) add("break", p, "superseded-by", "status says superseded, but no edge records it: run sp supersede <successor> --of " p)
+	handbook()
+	for (s = 1; s <= 2; s++) for (j = 1; j <= np; j++) if (PS[j] == (s == 1 ? "break" : "drift") && (only == "" || PP[j] == only)) print PS[j] "\t" PP[j] "\t" PK[j] "\t" PM[j]
+	print "#\t" na
+}
+# A handbook entry in the note contract: a Because and a Stage, and a Moment in
+# gotchas. Entries are ### headings (## in a file written without areas).
+function handbook(  f, j, l, n, lv, h, e, body) {
+	for (j = 1; j <= 3; j++) {
+		f = "docs/handbook/" (j == 1 ? "commands" : j == 2 ? "gotchas" : "conventions") ".md"
+		if (!(f in R_IS)) continue
+		lv = "### "; while ((getline l < f) > 0) if (l ~ /^### /) { lv = ""; break }; close(f)
+		h = ""; body = ""
+		while ((getline l < f) > 0) {
+			if (l ~ /^#{1,3} /) { if (h != "") hbentry(f, h, body); h = (l ~ (lv == "" ? "^### " : "^## ")) ? l : ""; body = ""; continue }
+			body = body "\n" l
+		}
+		close(f)
+		if (h != "") hbentry(f, h, body)
+	}
+}
+function hbentry(f, h, body,  s) {
+	s = h; sub(/^#+ /, "", s)
+	if (only != "" && only != f) return
+	if (body !~ /Because:/) add("drift", f, "entry", "\"" s "\" has no Because: (write not recorded if none)")
+	if (body !~ /Stage:[ \t]*(provisional|established|canonical|superseded)/) add("drift", f, "entry", "\"" s "\" has no Stage: (provisional for a new entry)")
+	if (f ~ /gotchas/ && body !~ /Moment:/) add("drift", f, "entry", "\"" s "\" has no Moment: (gotchas take Moment / Reflex / Instead / Because)")
+}
+'
+
+# Doc-side tags: artifact ids and backticked mentions, kind by seal class.
+AWK_DOCTAGS='
+BEGIN { FS = "\t" }
+FILENAME == sealedf { cls[$1] = $2; next }
+FNR == 1 {
+	c = (FILENAME in cls) ? cls[FILENAME] : "live"
+	mk = (c == "live") ? "mention" : c
+	ak = (c == "live") ? "artifact" : "sealedartifact"
+	infm = ($0 == "---")
+	if (infm) next
+}
+infm && $0 == "---" { infm = 0; next }
+infm && /^id:[ \t]*/ { v = $0; sub(/^id:[ \t]*/, "", v); gsub(/["\047]/, "", v); print v "\t" FILENAME "\t" FNR ";\"\tkind:" ak "\tline:" FNR; next }
+{
+	s = $0
+	while (match(s, /`[A-Za-z_][A-Za-z0-9_.\/-]*[A-Za-z0-9_](\(\))?`/)) {
+		t = substr(s, RSTART + 1, RLENGTH - 2); sub(/\(\)$/, "", t)
+		s = substr(s, RSTART + RLENGTH)
+		# An anchor hint right after the mention: `Sym` (path), (`path`), (path:line).
+		h = ""
+		if (match(s, /^ \(`?[A-Za-z0-9_.\/-]+(:[0-9,-]+)?`?\)/)) {
+			h = substr(s, 3, RLENGTH - 3); gsub(/`/, "", h); sub(/:[0-9,-]+$/, "", h); sub(/^\.\//, "", h)
+		}
+		print t "\t" FILENAME "\t" FNR ";\"\tkind:" mk "\tline:" FNR (h != "" ? "\thint:" h : "")
+	}
+}'
+
+# Code-side tags for the grep fallback: a keyword definition heuristic.
+DEFRE='(^|[^A-Za-z0-9_])(def|class|function|func|fn|sub|type|interface|struct|enum|trait|module|const)[[:space:]]+[A-Za-z_]|^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)[[:space:]]*\{?'
+AWK_GREPDEFS='
+{
+	p = index($0, ":"); path = substr($0, 1, p - 1); r = substr($0, p + 1)
+	p = index(r, ":"); line = substr(r, 1, p - 1); r = substr(r, p + 1)
+	if (match(r, /(def|class|function|func|fn|sub|type|interface|struct|enum|trait|module|const)[ \t]+[A-Za-z_][A-Za-z0-9_]*/)) {
+		s = substr(r, RSTART, RLENGTH); n = split(s, w, /[ \t]+/); name = w[n]; k = w[1]
+	} else if (match(r, /^[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\(\)/)) {
+		s = substr(r, RSTART, RLENGTH); gsub(/[ \t()]/, "", s); name = s; k = "function"
+	} else next
+	print name "\t" path "\t" line ";\"\tkind:" k "\tline:" line
+}'
+
+# Common field access and doc ranking, prepended to the query programs.
+AWK_LIB='
+function fld(name,  i) { for (i = 4; i <= NF; i++) if (index($i, name ":") == 1) return substr($i, length(name) + 2); return "" }
+function isdoc(k) { return k == "mention" || k == "artifact" || islookup(k) }
+function islookup(k) { return k == "history" || k == "research" || k == "sealedartifact" }
+function lastseg(s) { sub(/.*[.\/]/, "", s); return s }
+function base(s) { sub(/.*\//, "", s); return s }
+function under(f, p) { return p == "" || f == p || index(f, p "/") == 1 }
+function linked(c) { return c == "anchored" || c == "unique" || c == "cited" }
+'
+
+# The link table: every doc mention resolved once, on evidence only (F28-F34).
+# Output: src, srcline, name, class, target file, target name, target line, tier.
+# Linked classes are anchored, unique and cited; any other class is a reason
+# the mention was left unlinked. Inputs: the listing, then the tags.
+AWK_LINKS='
+function testfile(f) { return f ~ /(^|\/)(tests?|testing|__tests__|spec|fixtures?)\// || base(f) ~ /^test_|_test\.|\.test\.|\.spec\./ }
+function shaped(m) { return m ~ /[_.]/ || m ~ /[a-z][A-Z]/ || m ~ /^[A-Z][a-z0-9]+[A-Z]/ }
+function noext(s) { s = base(s); sub(/\.[^.]*$/, "", s); return s }
+function first(l,  a) { split(l, a, SUBSEP); return a[2] }
+function out(c, tf, tn, tl) { print ms[i] "\t" ml[i] "\t" m "\t" c "\t" tf "\t" tn "\t" tl "\t" mt[i] }
+# Of the files defining name n, those under hint path h (or named h).
+function inhint(n, h,  a, j, k, c) {
+	c = 0; k = split(files[n], a, SUBSEP)
+	for (j = 2; j <= k; j++) if (under(a[j], h) || base(a[j]) == h || (length(a[j]) > length(h) && substr(a[j], length(a[j]) - length(h)) == "/" h)) { c++; hf = a[j] }
+	return c
+}
+# Reads of nf[] create the key in awk, so "is defined" is always nf[x] > 0, never `x in nf`.
+function resolve(  key, h, a1, a1l, b1, a, j, k, c, tf) {
+	h = mh[i]
+	if (m in path) return out("anchored", m, "", 1)
+	if (m in dir) return out("anchored", m, "", "")
+	if (m ~ /\// && suf[m] == 1) return out("anchored", sufp[m], "", 1)
+	if (m ~ /\// || (m ~ /\.[A-Za-z][A-Za-z0-9]*$/ && (m in bc))) {
+		if (bc[base(m)] == 1) return out("unique", bp[base(m)], "", 1)
+		if (bc[base(m)] > 1) return out("ambiguous", "", "", "")
+		if (m ~ /\//) return out("no-definition", "", "", "")
+	}
+	if (h != "") {
+		key = (nf[m] > 0) ? m : lastseg(m)
+		if (!(nf[key] > 0)) return out("hint-miss", "", "", "")
+		c = inhint(key, h)
+		if (c == 1) return out("anchored", hf, key, def[key, hf])
+		return out(c == 0 ? "hint-miss" : "ambiguous", "", "", "")
+	}
+	# A dotted name: a qualified definition, the class and member in one file,
+	# or a module of that name (its file, or its package __init__). Without a
+	# hint, an anchor never lands in a test file.
+	if (m ~ /\./) {
+		tf = ""
+		a1 = m; sub(/\.[^.]*$/, "", a1); b1 = m; sub(/.*\./, "", b1); a1l = a1; sub(/.*\./, "", a1l)
+		if (nf[m] == 1) { tf = first(files[m]); tn = m }
+		else if (nf[a1] == 1 && ((b1, first(files[a1])) in def)) { tf = first(files[a1]); tn = b1 }
+		else if (nf[b1] > 0) {
+			c = 0; k = split(files[b1], a, SUBSEP)
+			for (j = 2; j <= k; j++) if (noext(a[j]) == a1l || a[j] ~ ("(^|/)" a1l "/__init__\\.py$")) { c++; f1 = a[j] }
+			if (c == 1) { tf = f1; tn = b1 }
+		}
+		if (tf != "") return testfile(tf) ? out("test-only", "", "", "") : out("anchored", tf, tn, def[tn, tf])
+	}
+	if (nf[m] == 1) {
+		tf = first(files[m])
+		if (testfile(tf)) return out("test-only", "", "", "")
+		if (!shaped(m)) return out("plain-word", "", "", "")
+		return out("unique", tf, m, def[m, tf])
+	}
+	if (nf[m] > 1 || (lastseg(m) != m && nf[lastseg(m)] > 0)) return out("ambiguous", "", "", "")
+	return out("no-definition", "", "", "")
+}
+FILENAME == ARGV[1] {
+	path[$0] = 1; b = base($0); bc[b]++; bp[b] = $0
+	s = $0; while ((p = index(s, "/")) > 0) { s = substr(s, p + 1); if (s != b) { suf[s]++; sufp[s] = $0 } }
+	d = $0; while (sub(/\/[^\/]*$/, "", d)) dir[d] = 1
+	next
+}
+/^!_/ { next }
+{ k = fld("kind") }
+k == "file" || k == "artifact" || k == "sealedartifact" { next }
+k == "mention" || k == "history" || k == "research" {
+	nm++; mn[nm] = $1; ms[nm] = $2; ml[nm] = fld("line"); mh[nm] = fld("hint"); mt[nm] = (k == "mention") ? "live" : "lookup"
+	next
+}
+!(($1, $2) in def) { def[$1, $2] = fld("line"); files[$1] = files[$1] SUBSEP $2; nf[$1]++ }
+END { for (i = 1; i <= nm; i++) { m = mn[i]; resolve() } }
+'
+
+# Code citing docs: "ADR 0042", "Task 057", "docs/adr/....md". Inputs: the
+# listing, the sealed list, then `grep -noE` output (path:line:match).
+CITERE='(ADR|Task|Plan|Epic|Direction|Story)[ -]?[0-9]{2,4}|docs/[A-Za-z0-9_./-]+\.md'
+AWK_CITES='
+function emit(d) { print f "\t" l "\t" m "\tcited\t" d "\t\t\t" ((d in sealed) ? "lookup" : "live") }
+FILENAME == ARGV[1] {
+	path[$0] = 1
+	if ($0 ~ /^docs\/(adr|tasks|plans|epics|directions|product\/(epics|directions|stories))\/[0-9]+[^\/]*$/) {
+		ty = $0; sub(/^docs\//, "", ty); sub(/\/[^\/]*$/, "", ty)
+		n = base($0); sub(/[^0-9].*/, "", n); key = ty "/" (n + 0); cnt[key]++; doc[key] = $0
+	}
+	next
+}
+FILENAME == ARGV[2] { split($0, a, "\t"); sealed[a[1]] = 1; next }
+{
+	p = index($0, ":"); f = substr($0, 1, p - 1); r = substr($0, p + 1)
+	p = index(r, ":"); l = substr(r, 1, p - 1); m = substr(r, p + 1)
+	if (m ~ /^docs\//) { if (m in path) emit(m); next }
+	ty = m; sub(/[ -]*[0-9]+$/, "", ty); n = m; sub(/^[^0-9]*/, "", n); n += 0
+	tl = (ty == "ADR") ? "adr" : (ty == "Task") ? "tasks" : (ty == "Plan") ? "plans" : (ty == "Epic") ? "epics product/epics" : (ty == "Direction") ? "directions product/directions" : "product/stories"
+	k = split(tl, t, " "); c = 0
+	for (j = 1; j <= k; j++) { key = t[j] "/" n; if (cnt[key] == 1) { c++; d = doc[key] } else if (cnt[key] > 1) c += 2 }
+	if (c == 1) emit(d)
+}
+'
+
+# --- Listing and freshness (D8) ---
+
+T=$STATE/tmp.$$
+mkdir -p "$T"
+: >"$T/hb"
+trap 'rm -rf "$T" ${LOCK:+"$LOCK"}' EXIT INT TERM
+
+if [ "$GIT" = 1 ]; then
+	{
+		git -c core.quotePath=false ls-files -co --exclude-standard
+		if [ -d docs ]; then find docs -type f ! -name .DS_Store; fi
+	} | grep -v '/$' | sort -u >"$T/all"
+	{
+		git -c core.quotePath=false ls-files -d
+		git -c core.quotePath=false ls-files -s | awk '$1 == "160000" { sub(/^[^\t]*\t/, ""); print }'
+	} >"$T/drop"
+	if [ -s "$T/drop" ]; then grep -vxF -f "$T/drop" "$T/all" >"$T/listing" || :; else mv "$T/all" "$T/listing"; fi
+else
+	find . -name .git -prune -o -type f ! -name .DS_Store -print | sed 's#^\./##' | sort >"$T/listing"
+fi
+SUM=$(cksum <"$T/listing")
+
+fresh=1
+[ -f "$STATE/tags" ] && [ -f "$STATE/links" ] && [ -f "$STATE/stamp" ] || fresh=0
+[ "$fresh" = 0 ] || [ "$(cat "$STATE/mode" 2>/dev/null)" = "$MODE" ] || fresh=0
+[ "$fresh" = 0 ] || [ "$(cat "$STATE/listing.sum" 2>/dev/null)" = "$SUM" ] || fresh=0
+# A newer nav means newer rules: state built by an older one is stale.
+[ "$fresh" = 0 ] || [ -z "$(find "$SELF" -newer "$STATE/stamp" 2>/dev/null)" ] || fresh=0
+if [ "$fresh" = 1 ]; then
+	newer=$(tr '\n' '\0' <"$T/listing" |
+		xargs -0 sh -c 'find "$@" -prune -newer "$0" -print' "$STATE/stamp" 2>/dev/null |
+		head -n 1) || :
+	[ -z "$newer" ] || fresh=0
+fi
+
+xfiles() { # xfiles <list> <cmd...>: run cmd over the files in list (never on stdin)
+	l=$1
+	shift
+	tr '\n' '\0' <"$l" | xargs -0 "$@" /dev/null
+}
+
+regen() {
+	: >"$T/stamp" # the start time: an edit made during regeneration is seen next call
+	grep '\.md$' "$T/listing" >"$T/md" || :
+	grep -v -E '\.(md|markdown|rst|txt|json|lock|csv|tsv|svg|png|jpe?g|gif|ico|pdf|min\.js|map)$' "$T/listing" >"$T/code" || :
+
+	# The id index and the supersession edges, read once (ADR 0006).
+	: >"$T/edges"
+	xfiles "$T/md" awk -v edgef="$T/edges" "$AWK_FM$AWK_RESOLVE"'
+		function row(f,  num, stem, k, i, id) {
+			stem = f; sub(/.*\//, "", stem); sub(/\.md$/, "", stem)
+			num = stem; if (match(num, /^[0-9]+/)) num = substr(num, 1, RLENGTH); else num = ""
+			id = FMS["id"]; gsub(/^["\047]|["\047]$/, "", id)
+			print f "\t" id "\t" kindof(f) "\t" num "\t" stem "\t" FMS["status"]
+			for (k = 1; k <= 2; k++) { key = k == 1 ? "supersedes" : "superseded-by"; for (i = 1; i <= FMC[key]; i++) print f "\t" key "\t" FM[key, i] >> edgef }
+		}
+		FNR == 1 { if (cur != "") row(cur); cur = FILENAME; fm_reset(); infm = ($0 == "---"); next }
+		infm && $0 == "---" { infm = 0; next }
+		infm { fm_line($0) }
+		END { if (cur != "") row(cur) }' >"$T/ids"
+	: >"$T/adrsup"
+
+	# Sealed set, derived from disk (D2; F20, F22).
+	{
+		grep -E '(^|/)probes/[^/]+\.md$' "$T/md" >"$T/probes" || :
+		xfiles "$T/probes" awk '
+			FNR == 1 { infm = ($0 == "---"); if (!infm) nextfile; next }
+			infm && $0 == "---" { nextfile }
+			infm && /^status:/ {
+				v = $0; sub(/^status:[ \t]*/, "", v); gsub(/["\047 \t]/, "", v)
+				if (v == "reconciled" || v == "abandoned" || v == "resolved") print FILENAME "\thistory"
+				nextfile
+			}'
+		# A ledgered Plan, named in its ledger line by any id the resolver reads.
+		if [ -f docs/plans/LEDGER.md ]; then
+			awk -v idsf="$T/ids" "$AWK_RESOLVE"'
+				BEGIN { rs_load(idsf) }
+				/ implemented / {
+					sub(/^[ \t]*[-*][ \t]+/, ""); gsub(/`/, "")
+					if ($1 != "") { t = rs($1, "docs/plans/LEDGER.md"); if (t != "" && kindof(t) == "plan") print t "\thistory" }
+				}' docs/plans/LEDGER.md || :
+		fi
+		# Superseded ADRs, from the union of both edges and the legacy status
+		# (ADR 0005). adrsup pairs each sealed doc with what supersedes it.
+		awk -F'\t' -v supf="$T/adrsup" "$AWK_RESOLVE"'
+			BEGIN { rs_load(ARGV[1]) }
+			FILENAME == ARGV[1] { next }
+			$2 == "supersedes" { t = rs($3, $1, 1); if (t != "") pair($1, t); next }
+			$2 == "superseded-by" { sup[$1] = 1; t = rs($3, $1, 1); if (t != "") pair(t, $1); next }
+			function pair(succ, pred) { sup[pred] = 1; if (!((succ, pred) in seen)) { seen[succ, pred] = 1; ps[++np] = succ; pp[np] = pred } }
+			END {
+				for (p in R_ST) if (R_ST[p] ~ /^["\047]?superseded/) {
+					sup[p] = 1; v = R_ST[p]
+					if (match(v, /[Bb][Yy][ \t:]+[^ \t,;)"\047]+/)) { v = substr(v, RSTART, RLENGTH); sub(/^[Bb][Yy][ \t:]+/, "", v); t = rs(v, p, 1); if (t != "") pair(t, p) }
+				}
+				for (p in sup) if (kindof(p) == "adr") print p "\thistory"
+				for (i = 1; i <= np; i++) if (kindof(pp[i]) == "adr") print ps[i] "\t" pp[i] > supf
+			}' "$T/ids" "$T/edges"
+		grep -E '(^|/)archive/' "$T/md" | sed 's/$/	history/' || :
+		grep -E '^docs/(knowledge|research)/' "$T/md" | sed 's/$/	research/' || :
+	} | sort -t '	' -k1,1 -u >"$T/sealed"
+
+	# Docs with a navigation-breaking problem, by the awk rules (no yq: this
+	# runs at every regeneration), for the `check` line of read answers.
+	awk -F'\t' -v idsf="$T/ids" -v yqf= -v only= "$AWK_FM$AWK_RESOLVE$AWK_CHECK" </dev/null |
+		awk -F'\t' '$1 == "break" { print $2 }' | sort -u >"$T/malformed"
+
+	# Doc sizes, for the budget readout.
+	xfiles "$T/md" wc -c | awk '{ n = $1; sub(/^[ \t]*[0-9]+[ \t]+/, ""); if ($0 != "total" && $0 != "/dev/null") print $0 "\t" n }' >"$T/sizes"
+
+	# Tags: code definitions, then doc mentions; one sorted file.
+	if [ "$MODE" = ctags ]; then
+		# A heredoc terminator (kind:heredoc) delimits text and defines nothing:
+		# dropped here, so no reader lists, resolves or links to it.
+		"$CTAGS" --options=NONE --extras=+qf --fields=+nKzSesait --excmd=number --sort=no \
+			-L "$T/code" -f - 2>/dev/null |
+			awk -F'\t' '{ for (i = 4; i <= NF; i++) if ($i == "kind:heredoc") next } 1' >"$T/code.tags" || :
+	else
+		{
+			xfiles "$T/code" grep -nE "$DEFRE" 2>/dev/null | awk "$AWK_GREPDEFS" || :
+			awk '{ print $0 "\t" $0 "\t1;\"\tkind:file\tline:1" }' "$T/code"
+		} >"$T/code.tags"
+	fi
+	xfiles "$T/md" awk -v sealedf="$T/sealed" "$AWK_DOCTAGS" "$T/sealed" >"$T/doc.tags"
+	{
+		printf '!_TAG_FILE_FORMAT\t2\t/extended format/\n'
+		printf '!_TAG_FILE_SORTED\t1\t/0=unsorted, 1=sorted, 2=foldcase/\n'
+		printf '!_TAG_PROGRAM_NAME\tnav\t/%s/\n' "$MODE"
+		cat "$T/code.tags" "$T/doc.tags" | grep -v '^!_' | sort
+	} >"$T/tags"
+
+	# Links: doc mentions resolved on evidence, then code citing docs.
+	awk -F'\t' "$AWK_LIB$AWK_LINKS" "$T/listing" "$T/tags" >"$T/links"
+	{ xfiles "$T/code" grep -noE "$CITERE" 2>/dev/null || :; } |
+		awk -F'\t' "$AWK_LIB$AWK_CITES" "$T/listing" "$T/sealed" - >>"$T/links"
+
+	# Into place; the stamp goes last, so an interrupted run is never fresh.
+	for f in tags sealed sizes adrsup ids malformed listing links; do mv "$T/$f" "$STATE/$f"; done
+	echo "$MODE" >"$STATE/mode"
+	echo "$SUM" >"$STATE/listing.sum"
+	mv "$T/stamp" "$STATE/stamp"
+}
+
+REGEN=
+if [ "$fresh" = 0 ]; then
+	regen
+	REGEN=" · regenerated"
+fi
+TAGS=$STATE/tags
+
+# The tools that answered: code definitions, then doc reading.
+LAYER="$MODE · awk"
+[ "$Q" != check ] || [ -z "$YQ" ] || LAYER="$LAYER · yq"
+case $Q in
+new | supersede | relate | ledger) LAYER="awk${YQ:+ · yq}" ;;
+outline | tree) LAYER=awk ;;
+show) LAYER="awk${MDQ:+ · mdq}"; [ -n "$MDQ" ] || LAYER="awk (reduced: no mdq, headings by awk)" ;;
+esac
+
+# --- Output: the summary (budget, handbook, always), then ranked docs by tier ---
+# The summary comes first so it survives a caller's `| head`; sessions truncate.
+
+# Input records: rank<TAB>hits<TAB>path<TAB>lines<TAB>live|lookup<TAB>classes
+render() {
+	sort -t '	' -k1,1n -k2,2nr -k3,3 | awk -F'\t' \
+		-v sealed="$SEALED" -v budget="$BUDGET" -v pct="$PCT" -v role="$ROLE" \
+		-v sizesf="$STATE/sizes" -v supf="$STATE/adrsup" -v hbf="$T/hb" -v badf="$STATE/malformed" '
+	function tok(b) { return int(b / 4 + 0.5) }
+	function rng(b,  lo) { lo = tok(b); return "~" lo "–" 2 * lo " tok" }
+	BEGIN {
+		while ((getline l < sizesf) > 0) { split(l, a, "\t"); size[a[1]] = a[2] }
+		while ((getline l < supf) > 0) { split(l, a, "\t"); sup[a[1]] = sup[a[1]] " " a[2] }
+		while ((getline l < badf) > 0) bad[l] = 1
+	}
+	$5 == "lookup" {
+		lk++; lkh += $2
+		if (sealed) lrows = lrows sprintf("lookup    %-52s %-14s (%d) %s\n", $3, ($4 != "" ? $4 : "-"), $2, $6)
+		next
+	}
+	{
+		n++
+		if ($3 in bad) nbad++
+		if (n > 20) { more++; next }
+		on += size[$3]
+		rows = rows sprintf("on-match  %-52s %-14s (%d) %s  %s\n", $3, ($4 != "" ? $4 : "-"), $2, $6, rng(size[$3]))
+		if ($3 in sup) {
+			k = split(sup[$3], s, " ")
+			for (i = 1; i <= k; i++) rows = rows sprintf("          supersedes %s (lookup)\n", s[i])
+		}
+	}
+	END {
+		hb = "docs/handbook/index.md"
+		if (hb in size) al = size[hb]
+		tot = on + al
+		if (budget == "") printf "budget    unset (AGENT_CONTEXT_TOKENS or --budget): always + on-match %s\n", rng(tot)
+		else {
+			share = int(budget * pct / 100)
+			v = (2 * tok(tot) <= share) ? "within share" : (tok(tot) <= share ? "may exceed share: read on-match by rank" : "over share: trim on-match")
+			printf "budget    always + on-match %s of %d tok (%s %d%% of %d) · %s\n", rng(tot), share, role, pct, budget, v
+		}
+		handbook()
+		if (nbad) printf "check     %d docs in this answer are malformed: run sp check <doc>\n", nbad
+		if (hb in size) printf "always    %-52s %s\n", hb, rng(al)
+		printf "%s", rows
+		if (n == 0) print "on-match  none"
+		if (more) printf "on-match  +%d more docs, ranked lower (narrow with --type)\n", more
+		printf "%s", lrows
+		if (lk && !sealed) printf "lookup    %d links in %d sealed or research docs (--sealed lists them)\n", lkh, lk
+	}
+	# The handbook entries linked into this answer: each linked line counts the
+	# innermost "### " (or "## ", in a handbook written without areas) entry that
+	# holds it, once. Their size is held against a quarter of
+	# the role share (D20); over it, the cut test is due at the next close.
+	function handbook(  l, a, f, i, n, e, eb, hit, ne, nf, b, hshare) {
+		while ((getline l < hbf) > 0) { split(l, a, "\t"); want[a[1], a[2]] = 1; if (!(a[1] in hf)) { hf[a[1]] = 1; fo[++nf] = a[1] } }
+		if (!nf) return
+		for (i = 1; i <= nf; i++) {
+			f = fo[i]; n = 0; e = 0; eb = 0; hit = 0
+			while ((getline l < f) > 0) {
+				n++
+				if (l ~ /^#{1,3} /) { if (hit) { ne++; b += eb }; e = (l ~ /^##+ /); eb = 0; hit = 0 }
+				if (e) { eb += length(l) + 1; if ((f, n) in want) hit = 1 }
+			}
+			if (hit) { ne++; b += eb }
+			close(f)
+		}
+		if (budget == "") { printf "handbook  %d entries matched in %d files, %s (budget unset: no size trigger)\n", ne, nf, rng(b); return }
+		hshare = int(budget * pct / 400)
+		printf "handbook  %d entries matched in %d files, %s of %d tok (1/4 of share) · %s\n", ne, nf, rng(b), hshare, (tok(b) > hshare ? "over: cut test due at close" : "within")
+	}'
+}
+
+# Doc records from the link table, filtered by --type. A link names its doc:
+# the source of a mention, or the target of a citation.
+DOCREC='
+function rank(p) {
+	if (p ~ /(^|\/)LEDGER\.md$/) return 9
+	if (p ~ /^docs\/handbook\//) return 1
+	if (p ~ /^docs\/adr\//) return 2
+	if (p ~ /(^|\/)CONTEXT\.md$/) return 3
+	if (p ~ /^docs\/tasks\//) return 4
+	if (p ~ /^docs\/epics\//) return 5
+	if (p ~ /^docs\/(directions|product)\//) return 6
+	if (p ~ /^docs\/plans\//) return 7
+	if (p ~ /(^|\/)probes\//) return 8
+	return 9
+}
+function dtype(p,  t) {
+	if (p ~ /(^|\/)CONTEXT\.md$/) return "context"
+	if (p ~ /^docs\//) { t = substr(p, 6); sub(/\/.*/, "", t); return t }
+	return "other"
+}
+function typeok(p,  n, a, i, t) {
+	if (types == "") return 1
+	t = dtype(p); n = split(types, a, ",")
+	for (i = 1; i <= n; i++) if (index(t, a[i]) == 1) return 1
+	return 0
+}
+function hit(p, line, tier, c) {
+	if (!typeok(p)) return
+	if (!(p in hits)) { order[++np] = p; cls[p] = tier }
+	hits[p]++
+	if (!((p, c) in hc)) { hc[p, c] = 1; cl[p] = cl[p] (cl[p] != "" ? "," : "") c }
+	if (line != "" && !((p, line) in seenl) && (nl[p] < 50 || p ~ /^docs\/handbook\//)) { seenl[p, line] = 1; ln[p, ++nl[p]] = line + 0 }
+}
+function lines(p,  i, j, n, v, s) { # the first 6 distinct lines, ascending
+	n = nl[p]
+	for (i = 2; i <= n; i++) { v = ln[p, i]; for (j = i - 1; j >= 1 && ln[p, j] > v; j--) ln[p, j + 1] = ln[p, j]; ln[p, j + 1] = v }
+	for (i = 1; i <= n && i <= 6; i++) s = s (i > 1 ? "," : "L") ln[p, i]
+	return s (n > 6 ? ",…" : "")
+}
+function link() { if ($4 == "cited") hit($5, "", $8, "cited"); else hit($1, $2, $8, $4) }
+function flush(out,  i, j, p, r) {
+	for (i = 1; i <= np; i++) {
+		p = order[i]; r = rank(p) "\t" hits[p] "\t" p "\t" lines(p) "\t" cls[p] "\t" cl[p]
+		if (out != "") print r > out; else print r
+		# Every handbook line, for the entry count in the footer.
+		if (p ~ /^docs\/handbook\// && p != "docs/handbook/index.md")
+			for (j = 1; j <= nl[p]; j++) print p "\t" ln[p, j] > hbf
+	}
+}
+# Mentions left unlinked, by reason; listed with --unlinked.
+function unlinked(  r) {
+	if (!typeok($1)) return
+	un++; ur[$4]++; ud[$1]++
+	if (showun) printf "unlinked  %s:%s  %s  (%s)\n", $1, $2, $3, $4 > unf
+}
+function unsummary(what,  r, s, n) {
+	if (!un) return
+	for (r in ur) s = s (s != "" ? ", " : "") ur[r] " " r
+	for (r in ud) n++
+	printf "unlinked  %d mentions of %s in %d docs could not be linked (%s)%s\n", un, what, n, s, (showun ? "" : "; --unlinked lists them") > unf
+}
+'
+
+# --- Queries ---
+
+q_def() {
+	awk -F'\t' -v sym="$ARG" "$AWK_LIB"'
+	/^!_/ { next }
+	{ k = fld("kind"); if (isdoc(k) || k == "file") next }
+	$1 == sym { ex[++ne] = $0; next }
+	{ if ($1 == lastseg(sym) || (sym !~ /[.]/ && lastseg($1) == sym && $1 ~ /[.]/)) ls[++nls] = $0 }
+	function show(r,  e, sc, sg) {
+		$0 = r; e = fld("end"); sc = fld("scope"); sg = fld("signature")
+		printf "def       %s:%s%s  %s%s%s\n", $2, fld("line"), (e != "" ? "-" e : ""), fld("kind"), (sc != "" ? "  in " sc : ""), (sg != "" ? "  " sg : "")
+	}
+	END {
+		if (ne) { print "layer     exact name"; for (i = 1; i <= ne && i <= 20; i++) show(ex[i]); if (ne > 20) print "def       +" ne - 20 " more"; exit 0 }
+		if (nls) { print "layer     last segment"; for (i = 1; i <= nls && i <= 20; i++) show(ls[i]); if (nls > 20) print "def       +" nls - 20 " more"; exit 0 }
+		exit 1
+	}' "$TAGS" && return 0
+	grep -v '\.md$' "$STATE/listing" >"$T/code" || :
+	echo "layer     literal grep (no definition found)"
+	xfiles "$T/code" grep -nwF -e "$ARG" 2>/dev/null | head -n 20 | sed 's/^/grep      /' || :
+	return 0
+}
+
+# docs D-NNN | X-NNN: the docs/PRODUCT.md entry (its line, and the row that
+# supersedes it), then the docs citing it as `PRODUCT.md#<id>`. A bare id is no
+# evidence: other docs number their own decisions the same way (F46).
+q_product() {
+	pf=docs/PRODUCT.md
+	if [ -f "$pf" ]; then
+		awk -v id="$ARG" -v pf="$pf" '
+		function has(s) { return s ~ ("(^|[^A-Za-z0-9-])" id "([^0-9]|$)") }
+		/^\|/ {
+			n = split($0, a, "|")
+			if (n < 6) next
+			if (has(a[2])) row = FNR
+			else if (has(a[5]) && match(a[2], /[DX]-[0-9]+/)) by = by (by != "" ? ", " : "") substr(a[2], RSTART, RLENGTH)
+			next
+		}
+		/^[-*][ \t]/ { s = $0; sub(/^[-*][ \t]+(<a [^>]*><\/a>)?/, "", s); if (index(s, id) == 1 && substr(s, length(id) + 1, 1) !~ /[0-9]/) row = FNR }
+		END {
+			if (!row) { printf "product   %s  not in %s\n", id, pf; exit }
+			printf "product   %s  %s:%d  %s\n", id, pf, row, (by != "" ? "superseded by " by : "current")
+		}' "$pf"
+	else
+		echo "product   no $pf in $ROOT"
+	fi
+	grep '\.md$' "$STATE/listing" | grep -vxF "$pf" >"$T/md" || :
+	xfiles "$T/md" grep -nE "PRODUCT\.md#$ARG([^0-9]|\$)" 2>/dev/null |
+		awk -F'\t' -v hbf="$T/hb" -v types="$TYPES" "$AWK_LIB$DOCREC"'
+		FILENAME == ARGV[1] { sealed[$1] = 1; next }
+		{
+			p = index($0, ":"); f = substr($0, 1, p - 1); r = substr($0, p + 1)
+			hit(f, substr(r, 1, index(r, ":") - 1), (f in sealed) ? "lookup" : "live", "product")
+		}
+		END { flush() }' "$STATE/sealed" - | render
+}
+
+# docs <symbol>: the docs whose links resolve to a definition of that name, in
+# a file that defines it. docs <path>: links into the path, and the docs that
+# code under the path cites.
+q_docs() {
+	case $ARG in [DX]-[0-9]*) case $ARG in *[!0-9DX-]*) ;; *) q_product; return 0 ;; esac ;; esac
+	pathmode=0
+	case $ARG in */*) pathmode=1 ;; esac
+	[ -e "$ARG" ] && pathmode=1
+	sym=$ARG
+	[ "$pathmode" = 0 ] || sym=${REL:-${ARG#./}}
+	: >"$T/un"
+	awk -F'\t' -v hbf="$T/hb" -v sym="$sym" -v pathmode="$pathmode" -v types="$TYPES" -v showun="$UNLINKED" -v unf="$T/un" "$AWK_LIB$DOCREC"'
+	function noext(s) { s = base(s); sub(/\.[^.]*$/, "", s); return s }
+	BEGIN { L = lastseg(sym); A = sym; sub(/\.[^.]*$/, "", A); Al = A; sub(/.*\./, "", Al) }
+	FILENAME == ARGV[1] {
+		if (pathmode || /^!_/) next
+		k = fld("kind"); if (isdoc(k) || k == "file") next
+		if ($1 == sym) ef[$2] = 1; else if ($1 == L) lf[$2] = 1
+		if (sym ~ /\./ && $1 == A) af[$2] = 1
+		next
+	}
+	# No exact definition: a dotted name narrows by its prefix, as the resolver
+	# does (same file as the class, or a module of that name).
+	FNR == 1 && !pathmode {
+		for (f in ef) { have = 1; break }
+		if (!have) for (f in lf) if (sym !~ /\./ || (f in af) || noext(f) == Al || index("/" f, "/" Al "/")) ef[f] = 1
+	}
+	pathmode {
+		if ($4 == "cited") { if (under($1, sym)) link(); next }
+		if (linked($4) && $5 != "" && under($5, sym)) link()
+		next
+	}
+	linked($4) { if ($4 != "cited" && $6 != "" && lastseg($6) == L && ($5 in ef)) link(); next }
+	$3 == sym || ($3 ~ /\./ && lastseg($3) == L) { unlinked() }
+	END { flush(); if (!pathmode) unsummary(sym) }' "$TAGS" "$STATE/links" | render
+	cat "$T/un"
+}
+
+# Shared by module and file: the docs linked into the scope and the docs that
+# code in scope cites, then the definitions in scope (last, as the longest part).
+q_scope() { # q_scope dir|file
+	: >"$T/rec"
+	awk -F'\t' -v hbf="$T/hb" -v rel="$REL" -v scope="$1" -v kindf="$KIND" -v types="$TYPES" -v recf="$T/rec" "$AWK_LIB$DOCREC"'
+	function inscope(p) {
+		if (scope == "file") return p == rel
+		return under(p, rel)
+	}
+	FILENAME == ARGV[1] {
+		if (/^!_/) next
+		k = fld("kind"); if (isdoc(k) || k == "file" || !inscope($2)) next
+		if (kindf != "" && index(k, kindf) != 1) next
+		if ($1 ~ /[.]/ && fld("scope") != "") next
+		if (!(($2) in nd)) forder[++nf] = $2
+		nd[$2]++
+		if (nd[$2] <= 8) names[$2] = names[$2] (nd[$2] > 1 ? ", " : "") $1
+		if (scope == "file") {
+			e = fld("end"); sc = fld("scope")
+			if (nd[$2] <= 40) printf "def       %s:%s%s  %s%s  %s\n", $1, fld("line"), (e != "" ? "-" e : ""), k, (sc != "" ? "  in " sc : ""), fld("signature")
+		}
+		next
+	}
+	function defs(  i, f) {
+		if (shown || scope == "file") return
+		shown = 1
+		for (i = 1; i <= nf && i <= 30; i++) { f = forder[i]; printf "defs      %s  (%d): %s%s\n", f, nd[f], names[f], (nd[f] > 8 ? ", …" : "") }
+		if (nf > 30) printf "defs      +%d more files\n", nf - 30
+		if (nf == 0) print "defs      none in scope"
+	}
+	FNR == 1 { defs() }
+	$4 == "cited" { if (inscope($1)) link(); next }
+	linked($4) && $5 != "" && inscope($5) { link() }
+	END {
+		defs(); flush(recf)
+		if (scope == "file") for (f in nd) if (nd[f] > 40) printf "def       +%d more (sp def <name> for one)\n", nd[f] - 40
+	}' "$TAGS" "$STATE/links" >"$T/defs"
+	render <"$T/rec"
+	cat "$T/defs"
+}
+
+q_module() {
+	[ -z "$REL" ] || [ -d "$REL" ] || die "no such directory in $ROOT: $REL"
+	q_scope dir
+}
+
+q_file() {
+	# An artifact id is not a path: name the path to use, or say the id misses.
+	if [ ! -f "$REL" ] && printf '%s\n' "$ARG" | grep -Eq '^((product-)?(direction|epic)|task|plan|adr|story)-[0-9]+$|^probe-'; then
+		d=$(resolve_one "$ARG") || exit 2
+		die "file takes a path: sp file ${d%%	*}"
+	fi
+	[ -f "$REL" ] || die "no such file in $ROOT: $REL"
+	case $(awk -v p="$REL" "$AWK_RESOLVE"'BEGIN { print kindof(p) }') in
+	doc) q_scope file ;;
+	*)
+		q_scope file | grep -v '^on-match  none$' || :
+		q_trace
+		q_tree | sed '/^budget /d'
+		;;
+	esac
+}
+
+q_unresolved() {
+	grep -v '\.md$' "$STATE/listing" >"$T/code" || :
+	awk -F'\t' "$AWK_LIB"'
+	FILENAME == ARGV[1] { path[$0] = 1; bn[base($0)] = 1; next }
+	/^!_/ { next }
+	{
+		k = fld("kind")
+		if (k == "mention") { m[++nm] = $1 "\t" $2 "\t" fld("line"); next }
+		if (isdoc(k) || k == "file") next
+		def[$1] = 1; def[lastseg($1)] = 1
+	}
+	END {
+		for (i = 1; i <= nm; i++) {
+			split(m[i], a, "\t"); n = a[1]
+			if ((n in def) || (lastseg(n) in def) || (n in path) || (n in bn)) continue
+			print m[i]
+		}
+	}' "$STATE/listing" "$TAGS" >"$T/cand"
+	# Literal resolution: every word in code, split three ways (identifier,
+	# dotted name, path), so a mention found verbatim counts. One pass with tr;
+	# grep -F -f with thousands of patterns takes minutes on BSD grep.
+	# The big sort runs once, on the widest split; the narrower splits are
+	# derived from its unique words.
+	: >"$T/found"
+	if [ -s "$T/cand" ]; then
+		xfiles "$T/code" cat 2>/dev/null | tr -cs 'A-Za-z0-9_./-' '\n' | sort -u >"$T/words" || :
+		{
+			cat "$T/words"
+			tr -cs 'A-Za-z0-9_.' '\n' <"$T/words"
+			tr -cs 'A-Za-z0-9_' '\n' <"$T/words"
+		} | sed 's#[./-]*$##' | sort -u >"$T/found"
+	fi
+	awk -F'\t' 'FILENAME == ARGV[1] { f[$0] = 1; next }
+		!($1 in f) { n++; if (n <= 40) printf "check     %s:%s  %s\n", $2, $3, $1 }
+		END {
+			if (n > 40) printf "check     +%d more\n", n - 40
+			printf "unresolved %d live-doc mentions match no definition, path or code literal: a list to check, not a stale verdict\n", n
+		}' "$T/found" "$T/cand"
+}
+
+# The intent trace: from the artifact up `relates`, one level at a time. At
+# each level the parent is the first entry, in order, that resolves to a higher
+# tier (`conventions`: Plan -> Task -> Epic -> Direction -> Story, ...). ADRs
+# and probes are never parents, and a same-tier entry (a predecessor) is passed
+# over. A broken or ambiguous entry met first is reported, never followed.
+q_trace() {
+	awk -v start="${REL:-$ARG}" -v idsf="$STATE/ids" -v badf="$STATE/malformed" "$AWK_FM$AWK_RESOLVE"'
+	function higher(list, t,  n, c, i) { n = split(list, c, " "); for (i = 1; i <= n; i++) if (tier(kindof(c[i])) > t) return 1; return 0 }
+	function say(ref, anchor) {
+		if (RS_C > 1) out(sprintf("trace     ambiguous link: %s%s (%s)", ref, anchor, RS_LIST))
+		else out(sprintf("trace     broken link: %s%s", ref, anchor))
+	}
+	function out(l) { O[++no] = l }
+	END {
+		if (nbad) printf "check     %d docs in this trace are malformed: run sp check <doc>\n", nbad
+		for (i = 1; i <= no; i++) print O[i]
+	}
+	BEGIN {
+		rs_load(idsf)
+		while ((getline l < badf) > 0) bad[l] = 1
+		ref = start; from = ""
+		while (1) {
+			anchor = ""
+			if (index(ref, "#")) { anchor = " (#" substr(ref, index(ref, "#") + 1) ")"; sub(/#.*$/, "", ref) }
+			cur = rs(ref, from)
+			# A root that names no doc is a miss, as show says it; a broken link
+			# further up is a trace row.
+			if (cur == "" && from == "" && RS_C == 0) { print "sp: " ref " names no doc: " rs_miss(ref) > "/dev/stderr"; exit 2 }
+			if (cur == "") { say(ref, anchor); exit }
+			if (cur in seen) { out("trace     cycle at " cur); exit }
+			seen[cur] = 1
+			if (cur in bad) nbad++
+			fm_read(cur)
+			id = FMS["id"]; title = FMS["title"]; gsub(/^"|"$/, "", title); intent = FMS["intent"]
+			if (id == "") id = cur
+			if (intent != "") out(sprintf("trace     %s%s: %s", id, anchor, intent))
+			else out(sprintf("trace     %s%s: no intent line%s", id, anchor, (title != "" ? " · (title) " title : "")))
+			n = FMC["relates"]; for (i = 1; i <= n; i++) rel[i] = FM["relates", i]
+			next_ref = ""; t = tier(kindof(cur))
+			for (i = 1; i <= n; i++) {
+				v = rel[i]
+				if (v ~ /(^|\/)adr[\/-]/ || v ~ /(^|\/)probes\// || v ~ /^probe-/) continue
+				w = v; sub(/#.*$/, "", w)
+				p = rs(w, cur)
+				# Ambiguous among docs none of which sits higher: not a parent.
+				if (p == "" && RS_C > 1 && !higher(RS_LIST, t)) continue
+				if (p == "") { a = ""; if (index(v, "#")) a = " (#" substr(v, index(v, "#") + 1) ")"; say(w, a); exit }
+				if (tier(kindof(p)) <= t) continue
+				next_ref = v; break
+			}
+			if (next_ref == "") exit
+			ref = next_ref; from = cur
+		}
+	}'
+}
+
+# check [<id|path>]: every artifact (docs in a kind directory, not a ledger),
+# or one. yq, when present, parses each frontmatter once per file: given
+# several files, --front-matter applies only to the first.
+q_check() {
+	only=
+	if [ -n "$ARG" ]; then
+		only=$(awk -v ref="${REL:-$ARG}" -v idsf="$STATE/ids" "$AWK_RESOLVE"'
+			BEGIN {
+				rs_load(idsf); t = rs(ref, "")
+				if (t != "") { print t; exit 0 }
+				if (RS_C > 1) print "sp: " ref " is ambiguous (" RS_LIST "): name it by path" > "/dev/stderr"
+				else print "sp: " ref " names no doc: " rs_miss(ref) > "/dev/stderr"
+				exit 2
+			}') || exit 2
+	fi
+	: >"$T/yq"
+	if [ -n "$YQ" ]; then
+		awk -F'\t' -v only="$only" '$3 != "doc" && $5 != "LEDGER" && (only == "" || $1 == only) { print $1 }' "$STATE/ids" |
+			while IFS= read -r f; do
+				[ "$(head -n 1 "$f")" = --- ] || continue
+				if r=$("$YQ" --front-matter=extract '[.relates[]?, .supersedes[]?, ."superseded-by"[]?] | map(tag) | join(" ")' "$f" 2>&1); then
+					printf '%s\tok\t%s\n' "$f" "$r"
+				else
+					printf '%s\terr\t%s\n' "$f" "$(printf '%s' "$r" | head -n 1 | sed 's/^Error: bad file [^:]*: //')"
+				fi
+			done >"$T/yq"
+	fi
+	awk -F'\t' -v idsf="$STATE/ids" -v yqf="$T/yq" -v only="$only" "$AWK_FM$AWK_RESOLVE$AWK_CHECK" </dev/null >"$T/chk"
+	awk -F'\t' -v only="$only" '
+		$1 == "#" { na = $2; next }
+		{ n[$1]++; d[$1, $2] = 1; k[$1, $3]++; if (!(($1, $3) in ko)) { ko[$1, $3] = 1; ks[$1] = ks[$1] (ks[$1] != "" ? " · " : "") $3 }; L[++nl] = $0 }
+		END {
+			for (x in d) { split(x, a, SUBSEP); nd[a[1]]++ }
+			if (only != "") printf "check     %s: %d breaking · %d drift\n", only, n["break"], n["drift"]
+			else printf "check     %d artifacts · %d breaking in %d docs · %d drift in %d docs\n", na, n["break"], nd["break"], n["drift"], nd["drift"]
+			for (s = 1; s <= 2; s++) {
+				sv = s == 1 ? "break" : "drift"; if (!n[sv]) continue
+				m = split(ks[sv], kk, " · "); line = ""
+				for (j = 1; j <= m; j++) line = line (j > 1 ? " · " : "") kk[j] " " k[sv, kk[j]]
+				printf "%-9s by key: %s\n", (s == 1 ? "breaking" : "drift"), line
+			}
+			if (!nl) print "ok        nothing to report"
+			for (i = 1; i <= nl; i++) { split(L[i], a, "\t"); printf "%-9s %s  %s  %s\n", a[1], a[2], a[3], a[4] }
+		}' "$T/chk"
+}
+
+# A doc's shape (Task 025): one record per heading and per item id, with its
+# line range and size. Headings in code fences are not headings; the
+# frontmatter is skipped. Items are ids like F12, Q3, D1, OQ3 that lead a list
+# item, a bold-led paragraph or a heading. A heading runs to the next heading
+# of its level or higher; an item to the next item or heading.
+# Output: H<TAB>line<TAB>end<TAB>bytes<TAB>level<TAB>text, I<TAB>line<TAB>end<TAB>bytes<TAB>id
+AWK_OUTLINE='
+function itemid(t, head,  m) {
+	if (match(t, /^(\*\*)?[A-Z][A-Z]?[0-9]+(\*\*)?([.:)]|\*\*|[ \t]+[-—–]|[ \t]*$)/) || (head && match(t, /^[A-Z][A-Z]?[0-9]+[ \t]/))) {
+		m = substr(t, RSTART, RLENGTH); gsub(/[^A-Z0-9]/, "", m); return m
+	}
+	return ""
+}
+function close_items(n,  i) { if (ci) { IE[ci] = n; ci = 0 } }
+function close_heads(lv, n,  i) { for (i = 1; i <= nh; i++) if (!HE[i] && HL[i] >= lv) HE[i] = n }
+{ B[NR] = length($0) + 1 }
+NR == 1 && $0 == "---" { infm = 1; next }
+infm { if ($0 == "---") infm = 0; next }
+/^[ \t]*(```|~~~)/ { fence = !fence; prevblank = 0; next }
+fence { next }
+/^#{1,6}[ \t]/ {
+	lv = $0; sub(/[ \t].*$/, "", lv); lv = length(lv); t = $0; sub(/^#+[ \t]+/, "", t); sub(/[ \t]+#*[ \t]*$/, "", t)
+	close_items(NR - 1); close_heads(lv, NR - 1)
+	nh++; HS[nh] = NR; HL[nh] = lv; HT[nh] = t; HE[nh] = 0
+	if ((id = itemid(t, 1)) != "") { ni++; IS[ni] = NR; II[ni] = id; IE[ni] = 0; ci = ni }
+	prevblank = 0; next
+}
+{
+	t = $0; id = ""
+	if (t ~ /^[ \t]*[-*+][ \t]+/) { sub(/^[ \t]*[-*+][ \t]+/, "", t); id = itemid(t) }
+	else if (prevblank && t ~ /^\*\*/) id = itemid(t)
+	if (id != "") { close_items(NR - 1); ni++; IS[ni] = NR; II[ni] = id; IE[ni] = 0; ci = ni }
+	prevblank = ($0 ~ /^[ \t]*$/)
+}
+END {
+	close_items(NR); close_heads(1, NR)
+	for (i = 1; i <= nh; i++) { b = 0; for (j = HS[i]; j <= HE[i]; j++) b += B[j]; print "H\t" HS[i] "\t" HE[i] "\t" b "\t" HL[i] "\t" HT[i] }
+	for (i = 1; i <= ni; i++) { e = IE[i]; while (e > IS[i] && B[e] == 1) e--; b = 0; for (j = IS[i]; j <= e; j++) b += B[j]; print "I\t" IS[i] "\t" e "\t" b "\t" II[i] }
+}'
+
+# doc_of <ref>: the path of one doc, or die saying what to do.
+doc_of() {
+	d=$(resolve_one "${REL:-$1}") || exit 2
+	printf '%s\n' "${d%%	*}"
+}
+
+# A budget line for an answer that points at `bytes` of docs.
+budget_line() {
+	awk -v b="$1" -v budget="$BUDGET" -v pct="$PCT" -v role="$ROLE" -v what="$2" 'BEGIN {
+		lo = int(b / 4 + 0.5)
+		if (budget == "") { printf "budget    %s ~%d–%d tok (budget unset)\n", what, lo, 2 * lo; exit }
+		share = int(budget * pct / 100)
+		printf "budget    %s ~%d–%d tok of %d tok (%s %d%% of %d) · %s\n", what, lo, 2 * lo, share, role, pct, budget,
+			(2 * lo <= share ? "within share" : (lo <= share ? "may exceed share" : "over share: read by section (sp show)"))
+	}'
+}
+
+q_outline() {
+	f=$(doc_of "$ARG")
+	awk "$AWK_OUTLINE" "$f" >"$T/ol"
+	budget_line "$(wc -c <"$f" | tr -d ' ')" "$f is"
+	awk "$AWK_FM"'
+		NR == 1 { if ($0 != "---") exit; next }
+		$0 == "---" { exit }
+		{ fm_line($0) }
+		END {
+			l = "fm        id: " FMS["id"]
+			if (FMS["intent"] != "") l = l " · intent: " FMS["intent"]
+			if (FMS["status"] != "") l = l " · status: " FMS["status"]
+			print l
+			split("relates supersedes superseded-by", K, " ")
+			for (k = 1; k <= 3; k++) if (FMC[K[k]]) { l = ""; for (i = 1; i <= FMC[K[k]]; i++) l = l (i > 1 ? ", " : "") FM[K[k], i]; printf "fm        %s: %s\n", K[k], l }
+		}' "$f"
+	awk -F'\t' '
+		function tok(b) { return int(b / 4 + 0.5) }
+		$1 == "H" { printf "L%-5s %s %s  (%d lines, ~%d tok)\n", $2, substr("######", 1, $5), $6, $3 - $2 + 1, tok($4) }
+		$1 == "I" { it = it (it != "" ? " · " : "") $5 " L" $2 " ~" tok($4); ni++ }
+		END { if (ni) printf "items     %d: %s\n", ni, it; else print "items     none" }' "$T/ol"
+}
+
+q_show() {
+	f=$(doc_of "$ARG")
+	awk "$AWK_OUTLINE" "$f" >"$T/ol"
+	# mdq, when present, says which headings are real sections; awk prints the
+	# original lines, so nothing is re-rendered and every line keeps its number.
+	: >"$T/real"
+	if [ -n "$MDQ" ]; then
+		printf '%s\n' "$SELS" | while IFS= read -r sel; do
+			case $sel in [A-Z][0-9]* | [A-Z][A-Z][0-9]*) ;; *)
+				"$MDQ" -o json "# $sel" "$f" 2>/dev/null |
+					awk '{ s = $0; while (match(s, /"title":"([^"\\]|\\.)*"/)) { t = substr(s, RSTART + 9, RLENGTH - 10); gsub(/\\"/, "\"", t); gsub(/\\\\/, "\\", t); print t; s = substr(s, RSTART + RLENGTH) } }' || : ;;
+			esac
+		done >"$T/real"
+	fi
+	printf '%s\n' "$SELS" | awk -F'\t' -v f="$f" -v mdq="${MDQ:+1}" -v realf="$T/real" -v olf="$T/ol" -v totf="$T/showb" '
+		function tok(b) { return int(b / 4 + 0.5) }
+		BEGIN {
+			while ((getline l < realf) > 0) real[l] = 1
+			while ((getline l < olf) > 0) { n++; split(l, a, "\t"); K[n] = a[1]; S[n] = a[2]; E[n] = a[3]; Z[n] = a[4]; X[n] = (a[1] == "H") ? a[6] : a[5] }
+			while ((getline l < f) > 0) L[++nl] = l
+		}
+		{
+			sel = $0; ws = tolower(sel); hit = 0; isid = (sel ~ /^[A-Z][A-Z]?[0-9]+$/)
+			# An exact heading wins over a heading that only contains the words.
+			for (pass = 1; pass <= 2 && !hit; pass++) for (i = 1; i <= n; i++) {
+				if (isid ? (K[i] != "I" || X[i] != sel) : (K[i] != "H" || (pass == 1 ? tolower(X[i]) != ws : !index(tolower(X[i]), ws)))) continue
+				if (!isid && mdq && !(X[i] in real)) continue
+				hit++; tot += Z[i]
+				printf "show      %s  %s  L%d-%d (~%d tok)\n", f, X[i], S[i], E[i], tok(Z[i])
+				for (j = S[i]; j <= E[i]; j++) print L[j]
+			}
+			if (!hit) printf "show      %s  %s  not found: sp outline %s lists its headings and items\n", f, sel, f
+		}
+		END { print tot + 0 > totf }' >"$T/show"
+	budget_line "$(cat "$T/showb")" "shown"
+	cat "$T/show"
+}
+
+# tree: everything that relates up to the doc, level by level, each with its
+# state from the ledgers and both supersession edges; then the next free number
+# of each kind. A same-tier or downward relates is not a child.
+q_tree() {
+	f=$(doc_of "$ARG")
+	for l in docs/plans/LEDGER.md docs/tasks/LEDGER.md docs/probes/LEDGER.md docs/product/probes/LEDGER.md; do
+		[ -f "$l" ] && awk -v l="$l" '{ print l "\t" $0 }' "$l"
+	done >"$T/ledgers" || :
+	awk -F'\t' -v root="$f" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE"'
+	function tok(b) { return int(b / 4 + 0.5) }
+	function state(p,  k, st, s) {
+		k = R_KP[p]; s = ""
+		if (p in LED) s = LED[p]
+		else if (k == "task" && NPL[p] && NPL[p] == NPI[p]) s = "implemented (" NPI[p] "/" NPL[p] " plans)"
+		else if (k == "task" && NPL[p]) s = NPI[p] + 0 "/" NPL[p] " plans implemented"
+		if (k == "probe" && R_ST[p] != "") s = R_ST[p]
+		if (p in BY) s = s (s != "" ? " · " : "") "superseded by " BY[p]
+		return s
+	}
+	# Children in order: the structure (Epics, Tasks, Plans, Stories) first,
+	# then ADRs, then probes. ADRs and probes are leaves: what relates to them
+	# is working memory, not structure.
+	function rank(c,  k) { k = R_KP[c]; return (k == "adr" ? 8 : k == "probe" ? 9 : 7 - tier(k)) "\t" canon(c) }
+	function walk(p, d,  i, j, c, n, a, t) {
+		n = split(CH[p], a, " ")
+		for (i = 2; i <= n; i++) { t = a[i]; for (j = i - 1; j >= 1 && rank(a[j]) > rank(t); j--) a[j + 1] = a[j]; a[j + 1] = t }
+		for (i = 1; i <= n; i++) {
+			c = a[i]; if (c in SEEN) continue; SEEN[c] = 1; nd++; bytes += SZ[c]
+			out(sprintf("%s%s  %s%s", substr("                    ", 1, 2 * d), canon(c), TI[c], (state(c) != "" ? "  [" state(c) "]" : "")))
+			if (d < 6 && R_KP[c] != "adr" && R_KP[c] != "probe") walk(c, d + 1)
+		}
+	}
+	function out(l) { O[++no] = l }
+	BEGIN {
+		rs_load(idsf)
+		while ((getline l < sizesf) > 0) { split(l, a, "\t"); SZ[a[1]] = a[2] }
+		for (i = 1; i <= rs_n; i++) {
+			p = R_P[i]; k = R_K[i]
+			if (k == "doc" || R_S[i] == "LEDGER") continue
+			if (!fm_read(p)) continue
+			t = FMS["title"]; gsub(/^"|"$/, "", t); TI[p] = t
+			for (j = 1; j <= FMC["relates"]; j++) {
+				q = rs(FM["relates", j], p); if (q == "" || q == p) continue
+				if (k != "adr" && k != "probe" && tier(k) >= tier(R_KP[q])) continue
+				CH[q] = CH[q] " " p
+				if (k == "plan" && R_KP[q] == "task") { NPL[q]++; PL[p] = q }
+			}
+			# Both edges of one supersession name its successor once.
+			for (j = 1; j <= FMC["superseded-by"]; j++) { q = rs(FM["superseded-by", j], p, 1); if (q != "" && !((p, q) in BYS)) { BYS[p, q] = 1; BY[p] = (p in BY ? BY[p] ", " : "") canon(q) } }
+			for (j = 1; j <= FMC["supersedes"]; j++) { q = rs(FM["supersedes", j], p, 1); if (q != "" && !((q, p) in BYS)) { BYS[q, p] = 1; BY[q] = (q in BY ? BY[q] ", " : "") canon(p) } }
+			if (R_N[i] != "" && R_N[i] + 0 > NX[k]) { NX[k] = R_N[i] + 0; W[k] = length(R_N[i]) }
+		}
+		# Ledger lines, the later winning (ADR 0004).
+		while ((getline l < ledf) > 0) {
+			split(l, a, "\t"); x = a[2]; sub(/^[ \t]*[-*][ \t]+/, "", x); split(x, w, " "); q = rs(w[1], "")
+			if (q == "") continue
+			if (match(x, / — (implemented|done|effect not achieved|reconciled|resolved) [0-9-]+/)) LED[q] = substr(x, RSTART + 5, RLENGTH - 5)
+			if (x ~ / — implemented /) PI[q] = 1
+		}
+		for (p in PL) if (p in PI) NPI[PL[p]]++
+		SEEN[root] = 1
+		walk(root, 1)
+		printf "tree      %s  %s  · %d descendants%s\n", canon(root), root, nd, (state(root) != "" ? "  [" state(root) "]" : "")
+		lo = tok(bytes)
+		printf "budget    descendants ~%d–%d tok if read whole; read them by section (sp show)\n", lo, 2 * lo
+		nx = ""
+		split("direction epic task plan adr product-direction product-epic story", K, " ")
+		for (i = 1; i <= 8; i++) if (K[i] in NX) nx = nx (nx != "" ? " · " : "") sprintf("%s-%0" W[K[i]] "d", K[i], NX[K[i]] + 1)
+		print "next      " (nx != "" ? nx : "none numbered yet")
+		for (i = 1; i <= no; i++) print O[i]
+	}' </dev/null
+}
+
+# The one frontmatter writer (Task 024). Input: one doc. -v op=add puts val in
+# list key `key` unless an item there already resolves to the same doc; -v
+# op=set sets scalar `key`; -v op=map (migrate) rewrites `id:` and link items
+# from -v mapf ("key<TAB>raw<TAB>new"), keeping a list inline or block, and
+# drops a rewritten item's note and its continuation lines. Every other line
+# is copied byte for byte.
+AWK_FMWRITE='
+function norm(v) { gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", v); sub(/[ \t].*$/, "", v); gsub(/["\047]+$/, "", v); sub(/:$/, "", v); return v }
+BEGIN { if (op == "map") while ((getline l < mapf) > 0) { split(l, a, "\t"); MP[a[1], a[2]] = a[3] } }
+op == "map" && FNR == 1 { mfm = ($0 == "---"); print; next }
+op == "map" && mfm && $0 == "---" { mfm = 0; print; next }
+op == "map" && mfm && mcont && $0 ~ /^[ \t]+[^ \t-]/ { next }
+op == "map" && mfm { mcont = 0 }
+op == "map" && mfm && mkey != "" && $0 ~ /^[ \t]*-[ \t]+/ {
+	v = $0; sub(/^[ \t]*-[ \t]+/, "", v); n = norm(v)
+	if ((mkey, n) in MP) { ind = $0; sub(/-.*$/, "", ind); print ind "- " MP[mkey, n]; mcont = 1; next }
+	print; next
+}
+op == "map" && mfm && match($0, /^[A-Za-z_][A-Za-z0-9_-]*:/) {
+	k = substr($0, 1, RLENGTH - 1); v = substr($0, RLENGTH + 1); sub(/^[ \t]+/, "", v); sub(/[ \t]+$/, "", v)
+	mkey = (k == "relates" || k == "supersedes" || k == "superseded-by") ? k : ""
+	if (k == "id" && (("id", norm(v)) in MP)) { print "id: " MP["id", norm(v)]; next }
+	if (mkey != "" && v ~ /^\[/) {
+		inner = v; sub(/^\[/, "", inner); sub(/\][ \t]*$/, "", inner)
+		m = split(inner, a, ","); o = ""; ch = 0
+		for (i = 1; i <= m; i++) {
+			t = a[i]; gsub(/^[ \t]+|[ \t]+$/, "", t)
+			if (t == "") continue
+			if ((mkey, norm(t)) in MP) { t = MP[mkey, norm(t)]; ch = 1 }
+			o = o (o != "" ? ", " : "") t
+		}
+		if (ch) { print k ": [" o "]"; next }
+	} else if (mkey != "" && v != "" && ((mkey, norm(v)) in MP)) { print k ": " MP[mkey, norm(v)]; next }
+	print; next
+}
+op == "map" { print; next }
+function same(v,  t) {
+	gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", v); sub(/[ \t].*$/, "", v); sub(/:$/, "", v)
+	if (v == val) return 1
+	t = rs(v, self); return t != "" && t == target
+}
+function item() { print (ind != "" ? ind : "  ") "- " val }
+BEGIN { rs_load(idsf); target = (op == "add") ? rs(val, self) : "" }
+NR == 1 { infm = ($0 == "---"); print; next }
+infm && inkey && $0 ~ /^[ \t]+-[ \t]+/ { v = $0; sub(/^[ \t]*-[ \t]+/, "", v); if (same(v)) present = 1; ind = $0; sub(/-.*$/, "", ind); print; next }
+infm && inkey { if (!present) item(); inkey = 0; done = 1 }
+infm && skip && $0 ~ /^[ \t]+-/ { next }
+infm { skip = 0 }
+infm && $0 == "---" {
+	if (!done) { if (op == "add") { print key ":"; item() } else print key ": " val }
+	done = 1; infm = 0; print; next
+}
+infm && !done && index($0, key ":") == 1 {
+	v = substr($0, length(key) + 2); sub(/^[ \t]+/, "", v); sub(/[ \t]+$/, "", v)
+	done = 1
+	if (op == "set") { print key ": " val; skip = 1; next }
+	if (v == "") { inkey = 1; done = 0; print; next }
+	if (v ~ /^\[/) {
+		inner = v; sub(/^\[/, "", inner); sub(/\][ \t]*$/, "", inner)
+		n = split(inner, a, ","); for (i = 1; i <= n; i++) if (same(a[i])) { print; next }
+		sub(/[ \t]+$/, "", inner); print key ": [" inner (inner ~ /[^ \t]/ ? ", " : "") val "]"; next
+	}
+	if (same(v)) { print; next }
+	print key ":"; print "  - " v; print "  - " val; next
+}
+{ print }
+'
+
+# fm_write <path> add|set <key> <value>: prints "changed" or "unchanged".
+fm_write() {
+	awk -v op="$2" -v key="$3" -v val="$4" -v self="$1" -v idsf="$STATE/ids" "$AWK_RESOLVE$AWK_FMWRITE" "$1" >"$T/w"
+	if cmp -s "$1" "$T/w"; then echo unchanged; else cat "$T/w" >"$1"; echo changed; fi
+}
+
+# resolve_one <ref> [from] [upward]: prints the path and the canonical id, tab
+# separated, or dies saying what to do. With `upward`, refuses a link that
+# would point down from `from`.
+resolve_one() {
+	awk -v ref="$1" -v from="${2:-}" -v up="${3:-}" -v idsf="$STATE/ids" "$AWK_RESOLVE"'
+	BEGIN {
+		rs_load(idsf); t = rs(ref, from)
+		if (t == "" && RS_C > 1) { print "sp: " ref " is ambiguous (" RS_LIST "): name it by kind-prefixed id or path" > "/dev/stderr"; exit 2 }
+		if (t == "") { print "sp: " ref " names no doc: " rs_miss(ref) > "/dev/stderr"; exit 2 }
+		if (up != "" && tier(kindof(from)) >= 1 && tier(kindof(t)) >= 1 && tier(kindof(t)) < tier(kindof(from))) {
+			print "sp: " ref " is a " kindof(t) ", below a " kindof(from) ": relates points up, so relate " canon(t) " --to the " kindof(from) " instead" > "/dev/stderr"; exit 2
+		}
+		if (up != "" && t == from) { print "sp: a doc does not relate to itself" > "/dev/stderr"; exit 2 }
+		print t "\t" canon(t)
+	}'
+}
+
+# Today, or SP_TODAY (fixtures pin it).
+today() { echo "${SP_TODAY:-$(date +%Y-%m-%d)}"; }
+
+# The lock that makes number allocation atomic: a directory, taken with mkdir.
+# A lock older than a minute is a crashed run's and is broken.
+LOCK=
+take_lock() {
+	LOCK=$STATE/lock.new
+	n=0
+	until mkdir "$LOCK" 2>/dev/null; do
+		n=$((n + 1))
+		if [ "$n" -ge 50 ]; then
+			[ -z "$(find "$LOCK" -prune -mmin +1 2>/dev/null)" ] || { rm -rf "$LOCK"; continue; }
+			die "another sp new holds $LOCK: wait and run it again"
+		fi
+		sleep 0.1
+	done
+}
+
+q_new() {
+	kind=$ARG title=$ARG2
+	case $kind in
+	direction) dir=docs/directions label=Direction secs="Problem|Appetite|Out of scope|Success signal|Constraints|Risk" ;;
+	epic) dir=docs/epics label=Epic secs="Goal|Scope|Out of scope|Tasks|Sequencing|Done when" ;;
+	task) dir=docs/tasks label=Task secs="Goal|Notes" ;;
+	plan) dir=docs/plans label=Plan secs="Context|Steps|Verification|Risk" ;;
+	adr) dir=docs/adr label=ADR secs="Context|Decision|Consequences|Alternatives" ;;
+	probe) dir=docs/probes label=Probe secs="Trigger|Governing docs|Findings|Open questions|Deliberation|Risk|Reconciliation" ;;
+	product-direction) dir=docs/product/directions label="Product Direction" secs="Problem|Appetite|Out of scope|Success signal|Constraints" ;;
+	product-epic) dir=docs/product/epics label="Product Epic" secs="Capability|Scope|Out of scope|Success signal|Stories|Sequencing" ;;
+	story) dir=docs/product/stories label=Story secs="Outcome|Acceptance criteria|Out of scope" ;;
+	product-probe) dir=docs/product/probes label=Probe secs="Signal|Classification|Governing decisions|Deliberation|Outcome|Affected|Changes" ;;
+	*) die "no kind '$kind': one of direction epic task plan adr probe product-direction product-epic story product-probe" ;;
+	esac
+	day=$(today)
+	slug=$(printf '%s' "$title" | awk '{
+		s = tolower($0); gsub(/[^a-z0-9]+/, "-", s); gsub(/^-+|-+$/, "", s)
+		if (length(s) > 60) { s = substr(s, 1, 60); sub(/-[^-]*$/, "", s) }
+		print s }')
+	[ -n "$slug" ] || die "the title has no letters or digits to make a file name from"
+	ftype=$kind
+	case $kind in product-probe) ftype=probe ;; esac
+	# The links, resolved before anything is written: a broken, ambiguous or
+	# downward one refuses the whole call.
+	: >"$T/rel"
+	if [ -n "$RELATES" ]; then
+		printf '%s\n' "$RELATES" | tr ',' '\n' | while IFS= read -r r; do
+			r=$(printf '%s' "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+			[ -n "$r" ] || continue
+			anchor=
+			case $r in *'#'*) anchor="#${r#*#}" ;; esac
+			x=$(resolve_one "${r%%#*}" "$dir/000-$slug.md" up) || exit 2
+			printf '%s%s\n' "${x#*	}" "$anchor"
+		done >"$T/rel" || exit 2
+	fi
+	mkdir -p "$dir"
+	take_lock
+	if [ "$ftype" = probe ]; then
+		id=probe-$day-$slug
+		path=$dir/$id.md
+		[ ! -e "$path" ] || die "$path exists: pick another title"
+		head="# Probe: $title"
+	else
+		w=3
+		[ "$kind" != adr ] || w=4
+		last=$(ls "$dir" 2>/dev/null | sed -n 's/^\([0-9][0-9]*\).*/\1/p' | sort -n | tail -n 1)
+		# Leading zeros read as octal in $(( )): strip them first.
+		num=$(printf "%0${w}d" $(($(printf '%s' "${last:-0}" | sed 's/^0*//; s/^$/0/') + 1)))
+		id=$kind-$num
+		path=$dir/$num-$slug.md
+		head="# $label $num: $title"
+	fi
+	{
+		echo ---
+		echo "id: $id"
+		printf 'title: "%s"\n' "$(printf '%s' "$title" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+		echo "created: $day"
+		[ -z "$INTENT" ] || echo "intent: $INTENT"
+		[ "$ftype" != probe ] || echo "status: open"
+		if [ -s "$T/rel" ]; then echo "relates:"; sed 's/^/  - /' "$T/rel"; else echo "relates: []"; fi
+		echo ---
+		echo
+		echo "$head"
+		printf '%s\n' "$secs" | tr '|' '\n' | while IFS= read -r h; do printf '\n## %s\n' "$h"; done
+	} >"$path"
+	rm -rf "$LOCK"
+	LOCK=
+	echo "new       $id  $path"
+	"$SELF" -C "$ROOT" check "$path" | sed -n '2p'
+}
+
+q_supersede() {
+	s=$(resolve_one "$ARG") || exit 2
+	p=$(resolve_one "$OF") || exit 2
+	sp_=${s%%	*} sid=${s#*	} pp=${p%%	*} pid=${p#*	}
+	[ "$sp_" != "$pp" ] || die "a doc does not supersede itself"
+	for f in "$sp_" "$pp"; do
+		[ "$(head -n 1 "$f")" = --- ] || die "$f has no frontmatter: add it first (sp check $f says what it needs)"
+	done
+	a=$(fm_write "$sp_" add supersedes "$pid")
+	b=$(fm_write "$pp" add superseded-by "$sid")
+	echo "supersede $sid  supersedes += $pid ($a)"
+	echo "supersede $pid  superseded-by += $sid ($b)"
+	"$SELF" -C "$ROOT" check "$sp_" | sed -n '2p'
+	"$SELF" -C "$ROOT" check "$pp" | sed -n '2p'
+}
+
+q_relate() {
+	c=$(resolve_one "$ARG") || exit 2
+	cp_=${c%%	*} cid=${c#*	}
+	t=$(resolve_one "$TO" "$cp_" up) || exit 2
+	tid=${t#*	}
+	[ "$(head -n 1 "$cp_")" = --- ] || die "$cp_ has no frontmatter: add it first (sp check $cp_ says what it needs)"
+	r=$(fm_write "$cp_" add relates "$tid")
+	echo "relate    $cid  relates += $tid ($r)"
+	"$SELF" -C "$ROOT" check "$cp_" | sed -n '2p'
+}
+
+# Ledger lines (ADR 0004; implement, reflect). Append-only: a correction is a
+# new line. Only a probe's own status is ever written, at its close.
+q_ledger() {
+	verb=$ARG text=$(printf '%s' "$ARG3" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+	r=$(resolve_one "$ARG2") || exit 2
+	rp=${r%%	*} rid=${r#*	}
+	k=$(awk -v p="$rp" "$AWK_RESOLVE"'BEGIN { print kindof(p) }')
+	day=$(today)
+	case $verb in
+	implemented) need=plan ledger=docs/plans/LEDGER.md line="- $rid — implemented $day — verification: $text" ;;
+	done | effect) need=task ledger=docs/tasks/LEDGER.md line="- $rid — done $day — effect: $text" ;;
+	not-achieved) need=task ledger=docs/tasks/LEDGER.md line="- $rid — effect not achieved $day — $text" ;;
+	reconcile)
+		need=probe
+		case $rp in
+		docs/product/probes/*) ledger=docs/product/probes/LEDGER.md line="$rid — resolved $day — outcome: $text" st=resolved ;;
+		*) ledger=docs/probes/LEDGER.md line="- $rid — reconciled $day — $text" st=reconciled ;;
+		esac
+		;;
+	*) die "no ledger verb '$verb': implemented <plan>, done <task>, not-achieved <task>, reconcile <probe>" ;;
+	esac
+	[ "$k" = "$need" ] || die "$verb takes a $need, and $rid is a $k"
+	mkdir -p "$(dirname "$ledger")"
+	printf '%s\n' "$line" >>"$ledger"
+	echo "ledger    $ledger  $line"
+	if [ "$verb" = reconcile ]; then
+		w=$(fm_write "$rp" set status "$st")
+		echo "status    $rid  status: $st ($w)"
+	fi
+}
+
+# --- migrate (Task 027, adr-0007): the corpus, once, to the shape sp reads ---
+
+# The plan, in one pass over the id index. Inputs: -v idsf, -v out (a dir),
+# -v settlef (answers, may be empty), -v strict (1: settlef is the reviewed
+# file). Writes to out: map (path, key, raw, new), add (path, op, key, value),
+# note (path, body line), fill (path, key: a missing title, created or the whole
+# frontmatter), settle (open lines), left (path, key, raw, why), err, and
+# stats. A link is settled by the resolver (upward, then not-downward), else by
+# the settle file; migrate itself picks nothing.
+AWK_MIGRATE='
+function norm(v) { gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", v); sub(/[ \t].*$/, "", v); gsub(/["\047]+$/, "", v); sub(/:$/, "", v); return v }
+function noteof(v,  r, q) {
+	r = v; gsub(/^[ \t]+|[ \t]+$/, "", r)
+	if (r ~ /^["\047]/) { q = substr(r, 1, 1); r = substr(r, 2); if (index(r, q)) r = substr(r, index(r, q) + 1); else r = "" }
+	else if (match(r, /^[^ \t]+/)) r = substr(r, RLENGTH + 1)
+	gsub(/^[ \t]+|[ \t]+$/, "", r); sub(/^#[ \t]*/, "", r)
+	if (r ~ /^\(.*\)$/) r = substr(r, 2, length(r) - 2)
+	return r
+}
+function isart(i) { return R_K[i] != "doc" && R_S[i] != "LEDGER" }
+function cite(p) { return (p in X_PI) && NEWID[X_PI[p]] != "" ? NEWID[X_PI[p]] : canon(p) }
+# The raw frontmatter of p: its keys (KV) and its link items (IK, IR), a
+# continuation line joined to its item. Returns 0 when p has none.
+function rawfm(p,  l, n, k, kk, v, a, m, j, ok, cont) {
+	NI = 0; split("", IK); split("", IR); split("", KV); ok = 0; n = 0; k = ""; cont = 0
+	while ((getline l < p) > 0) {
+		if (++n == 1) { if (l != "---") break; continue }
+		if (l == "---") { ok = 1; break }
+		if (k != "" && l ~ /^[ \t]*-[ \t]+/) { v = l; sub(/^[ \t]*-[ \t]+/, "", v); IK[++NI] = k; IR[NI] = v; cont = 1; continue }
+		if (cont && l ~ /^[ \t]+[^ \t-]/) { sub(/^[ \t]+/, "", l); IR[NI] = IR[NI] " " l; continue }
+		cont = 0
+		if (!match(l, /^[A-Za-z_][A-Za-z0-9_-]*:/)) { k = ""; continue }
+		kk = substr(l, 1, RLENGTH - 1); v = substr(l, RLENGTH + 1); sub(/^[ \t]+/, "", v); sub(/[ \t]+$/, "", v)
+		KV[kk] = v
+		k = (kk == "relates" || kk == "supersedes" || kk == "superseded-by") ? kk : ""
+		if (k != "" && v != "") {
+			if (v ~ /^\[/) { sub(/^\[/, "", v); sub(/\][ \t]*$/, "", v); m = split(v, a, ","); for (j = 1; j <= m; j++) { gsub(/^[ \t]+|[ \t]+$/, "", a[j]); if (a[j] != "") { IK[++NI] = k; IR[NI] = a[j] } } }
+			else { IK[++NI] = k; IR[NI] = v }
+			k = ""
+		}
+	}
+	close(p)
+	return ok
+}
+# The body of p, lower-cased, read once.
+function body(p,  l, n, f, b) {
+	if (p in BODY) return BODY[p]
+	n = 0; f = 0; b = ""
+	while ((getline l < p) > 0) { if (++n == 1 && l == "---") { f = 1; continue } if (f) { if (l == "---") f = 0; continue } b = b " " l }
+	close(p)
+	return BODY[p] = tolower(b)
+}
+# The one candidate in list c that the body of p cites by kind and number, or
+# by path; "" when none or several are cited.
+function guess(p, c,  a, n, j, x, w, hit, g) {
+	n = split(c, a, " "); hit = 0; g = ""
+	for (j = 1; j <= n; j++) {
+		x = a[j]; w = R_K[X_PI[x]]; sub(/^product-/, "", w)
+		if (index(body(p), tolower(x)) || (R_N[X_PI[x]] != "" && match(body(p), w "[ -]0*" (R_N[X_PI[x]] + 0) "([^0-9]|$)"))) { hit++; g = cite(x) }
+	}
+	return hit == 1 ? g : ""
+}
+# A broken path whose kind directory and number still name one doc (the file
+# was renamed): that doc, as a guess.
+function pathguess(raw,  k, n, t) {
+	k = kindof(raw); n = raw; sub(/^.*\//, "", n)
+	if (k == "doc" || k == "probe" || !match(n, /^[0-9]+/)) return ""
+	t = rs(k "-" substr(n, 1, RLENGTH), "")
+	return t != "" ? cite(t) : ""
+}
+# Candidates as ids, highest tier first.
+function cands(c,  a, n, i, j, t, o) {
+	n = split(c, a, " ")
+	for (i = 2; i <= n; i++) { t = a[i]; for (j = i - 1; j >= 1 && tier(R_KP[a[j]]) < tier(R_KP[t]); j--) a[j + 1] = a[j]; a[j + 1] = t }
+	o = ""; for (i = 1; i <= n; i++) o = o (o != "" ? " " : "") cite(a[i])
+	return o
+}
+# An unsettled link: take the answer from the settle file, or leave a line.
+# Returns the path it settles to, or "".
+function settle(p, key, raw, c, hint,  id, ans, t, ok, a, n, j, g) {
+	id = p SUBSEP key SUBSEP raw
+	if ((id in SA) && !strict) { keep(p, key, raw, SA[id], SC[id]); return "" }
+	if (id in SA) {
+		ans = SA[id]; gsub(/^[ \t]+|[ \t]+$/, "", ans)
+		if (ans == "leave") return ""
+		if (ans == "") { print "line " SL[id] " has no answer: name a doc, or write leave" > (out "/err"); return "" }
+		t = rs(ans, p, key != "relates")
+		if (t == "") { print "line " SL[id] ": " ans " names no doc" > (out "/err"); return "" }
+		ok = (c == ""); n = split(c, a, " "); for (j = 1; j <= n; j++) if (a[j] == t) ok = 1
+		if (!ok) { print "line " SL[id] ": " ans " is not a candidate (" cands(c) ")" > (out "/err"); return "" }
+		return t
+	}
+	if (strict) { print "no line for " p " " key " " raw ": run sp migrate to write the settle file again" > (out "/err"); return "" }
+	g = c != "" ? guess(p, c) : pathguess(raw)
+	keep(p, key, raw, g, (g != "" ? "# guess · " : "# ") (c != "" ? "candidates: " cands(c) : hint))
+	return ""
+}
+function keep(p, key, raw, ans, cm) { print p "\t" key "\t" raw "\t" ans "\t" cm > (out "/settle"); nset++ }
+function edge(s, d) { if (!((s, d) in E)) { E[s, d] = 1; EL[++ne] = s SUBSEP d; PRED[d] = 1 } }
+BEGIN {
+	rs_load(idsf)
+	if (settlef != "") { n = 0; while ((getline l < settlef) > 0) { n++; if (l ~ /^[ \t]*(#|$)/) continue; split(l, a, "\t"); id = a[1] SUBSEP a[2] SUBSEP a[3]; SA[id] = a[4]; SC[id] = a[5]; SL[id] = n } }
+	# The id each artifact should carry; an unnumbered file takes the next free
+	# number of its kind (by file number), which check accepts.
+	for (i = 1; i <= rs_n; i++) if (isart(i) && R_N[i] != "" && R_N[i] + 0 > MAXN[R_K[i]]) MAXN[R_K[i]] = R_N[i] + 0
+	for (i = 1; i <= rs_n; i++) {
+		if (!isart(i)) continue
+		k = R_K[i]; cur = R_I[i]
+		if (k == "probe") NEWID[i] = R_S[i] ~ /^probe-/ ? R_S[i] : ""
+		else if (R_N[i] != "") NEWID[i] = k "-" R_N[i]
+		else if (cur ~ ("^" k "-[0-9]+$")) NEWID[i] = cur
+		else NEWID[i] = sprintf("%s-%0" (k == "adr" ? 4 : 3) "d", k, ++MAXN[k])
+		if (NEWID[i] == "") print R_P[i] "\tid\t" cur "\tits file name is not probe-<date>-<slug>, and renames are out of scope" > (out "/left")
+		else { NC[NEWID[i]]++; NP[NEWID[i]] = NP[NEWID[i]] " " i }
+	}
+	for (x in NC) if (NC[x] > 1) { n = split(NP[x], a, " "); for (j = 1; j <= n; j++) { print R_P[a[j]] "\tid\t" R_I[a[j]] "\t" x " would be shared by " NC[x] " files, and renames are out of scope" > (out "/left"); NEWID[a[j]] = "" } }
+	for (i = 1; i <= rs_n; i++) {
+		if (!isart(i)) continue
+		p = R_P[i]
+		if (!rawfm(p)) { if (NEWID[i] != "") { print p "\tfrontmatter\t" NEWID[i] > (out "/fill"); nfm++ } continue }
+		if (!("id" in KV)) { if (NEWID[i] != "") { print p "\tset\tid\t" NEWID[i] > (out "/add"); nid++ } }
+		else if (NEWID[i] != "" && norm(KV["id"]) != NEWID[i]) { print p "\tid\t" norm(KV["id"]) "\t" NEWID[i] > (out "/map"); nid++ }
+		if (KV["title"] == "") print p "\ttitle" > (out "/fill")
+		if (KV["created"] == "") print p "\tcreated" > (out "/fill")
+		for (m = 1; m <= NI; m++) {
+			key = IK[m]; raw = norm(IR[m]); nt = noteof(IR[m])
+			t = rs(raw, p, key != "relates")
+			if (t == "" && RS_C > 1) t = settle(p, key, raw, RS_LIST, "")
+			else if (t == "" && (raw ~ /\// && raw !~ /^(\.\/)?docs\// || raw ~ /^[A-Za-z0-9_.-]+:[^\/]/)) { print p "\t" key "\t" raw "\tanother workspace: not followed" > (out "/left"); nleft++; continue }
+			else if (t == "") t = settle(p, key, raw, "", "resolves to no doc: name the doc it meant, or write leave")
+			if (t == "") continue
+			new = cite(t)
+			if (new != raw || nt != "") { if (!((p, key, raw) in MAPPED)) { MAPPED[p, key, raw] = 1; print p "\t" key "\t" raw "\t" new > (out "/map"); nlink++ } }
+			if (nt != "") { print p "\t" (key == "relates" ? "Relates" : "Supersession") " note: " new " (" nt ")" > (out "/note"); nnote++ }
+			if (key == "supersedes") { HS[p, t] = 1; edge(p, t) }
+			if (key == "superseded-by") { HB[p, t] = 1; edge(t, p) }
+		}
+		st = KV["status"]; gsub(/^["\047]|["\047]$/, "", st)
+		if (tolower(st) ~ /^superseded/) LEG[p] = st
+	}
+	# A legacy status names its successor, or the settle file does.
+	for (p in LEG) {
+		if (p in PRED) continue
+		st = LEG[p]; ref = ""
+		if (match(st, /docs\/[^ \t,;)"\047]+\.md/)) ref = substr(st, RSTART, RLENGTH)
+		else if (match(tolower(st), /adr[ -]?[0-9]+/)) { ref = substr(st, RSTART, RLENGTH); gsub(/[^0-9]/, "", ref); ref = "adr-" ref }
+		else if (match(st, /[Bb][Yy][ \t]+[^ \t,;)"\047]+/)) { ref = substr(st, RSTART, RLENGTH); sub(/^[Bb][Yy][ \t]+/, "", ref) }
+		t = ref != "" ? rs(ref, p, 1) : ""
+		if (t == "") t = settle(p, "superseded-by", "status: " st, "", "name its successor")
+		if (t != "") edge(t, p)
+	}
+	# Both edges for every supersession (adr-0005).
+	for (j = 1; j <= ne; j++) {
+		split(EL[j], a, SUBSEP); s = a[1]; d = a[2]
+		if (!((s, d) in HS) && isart(X_PI[s])) { print s "\tadd\tsupersedes\t" cite(d) > (out "/add"); nedge++ }
+		if (!((d, s) in HB) && isart(X_PI[d])) { print d "\tadd\tsuperseded-by\t" cite(s) > (out "/add"); nedge++ }
+	}
+	printf "%d ids · %d links · %d supersession edges · %d frontmatters · %d notes moved\n", nid, nlink, nedge, nfm, nnote > (out "/stats")
+	print nset + 0 > (out "/nset")
+}
+'
+
+# A missing title or created, derived mechanically (Task 027 step 5): the
+# first heading, else the file stem; git's first commit of it, else its mtime.
+derive_title() {
+	t=$(awk '/^#+[ \t]/ { sub(/^#+[ \t]+/, ""); sub(/[ \t]+#*[ \t]*$/, ""); print; exit }' "$1")
+	[ -n "$t" ] || { t=${1##*/}; t=${t%.md}; }
+	printf '"%s"' "$(printf '%s' "$t" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+}
+derive_created() {
+	d=
+	[ "$GIT" = 0 ] || d=$(git log --diff-filter=A --format=%as -- "$1" 2>/dev/null | tail -n 1)
+	[ -n "$d" ] || d=$(date -r "$1" +%Y-%m-%d)
+	echo "$d"
+}
+
+# What migrate leaves as it is (another workspace, an id that would need a
+# rename): a count here, the list in a file.
+migrate_left() {
+	[ "$nleft" != 0 ] || { rm -f "$STATE/migrate.left"; return 0; }
+	awk -F'\t' '{ print $1 "  " $2 "  " $3 ": " $4 }' "$W/out/left" >"$STATE/migrate.left"
+	echo "left      $nleft links and ids left as they are: $STATE/migrate.left"
+}
+
+q_migrate() {
+	W=$T/mig
+	mkdir -p "$W/a" "$W/out"
+	: >"$W/out/map"; : >"$W/out/add"; : >"$W/out/note"; : >"$W/out/fill"; : >"$W/out/settle"; : >"$W/out/left"; : >"$W/out/err"
+	sf=$STATE/migrate.settle
+	if [ -n "$SETTLE" ]; then
+		[ -f "$SETTLE" ] || die "no settle file at $SETTLE: run sp migrate to write one"
+		in=$SETTLE strict=1
+	else
+		in= strict=0
+		[ ! -f "$sf" ] || { cp "$sf" "$W/prev"; in=$W/prev; }
+	fi
+	awk -v idsf="$STATE/ids" -v out="$W/out" -v settlef="$in" -v strict="$strict" "$AWK_RESOLVE$AWK_MIGRATE" </dev/null
+	if [ -s "$W/out/err" ]; then
+		echo "migrate   refused: the settle file $SETTLE is not ready; nothing was written"
+		sed 's/^/settle    /' "$W/out/err"
+		return 1
+	fi
+
+	# Apply to a copy of every listed .md file; the copy is the preview.
+	grep '\.md$' "$STATE/listing" | while IFS= read -r p; do
+		mkdir -p "$W/a/$(dirname "$p")" && cp -p "$p" "$W/a/$p"
+	done
+	cp -R "$W/a" "$W/b"
+	cut -f1 "$W/out/map" "$W/out/add" "$W/out/note" "$W/out/fill" | sort -u >"$W/touched"
+	while IFS= read -r p; do
+		f=$W/b/$p
+		awk -F'\t' -v p="$p" '$1 == p && $2 == "frontmatter" { print $3 }' "$W/out/fill" >"$W/one"
+		if [ -s "$W/one" ]; then
+			{
+				printf '%s\nid: %s\ntitle: %s\ncreated: %s\nrelates: []\n%s\n\n' --- "$(cat "$W/one")" "$(derive_title "$p")" "$(derive_created "$p")" ---
+				cat "$p"
+			} >"$f"
+		fi
+		awk -F'\t' -v p="$p" 'BEGIN { OFS = "\t" } $1 == p { print $2, $3, $4 }' "$W/out/map" >"$W/one"
+		if [ -s "$W/one" ]; then
+			awk -v op=map -v mapf="$W/one" -v self="$p" -v idsf="$STATE/ids" "$AWK_RESOLVE$AWK_FMWRITE" "$f" >"$W/w" && cat "$W/w" >"$f"
+		fi
+		awk -F'\t' -v p="$p" '$1 == p && $2 != "frontmatter" { print $2 }' "$W/out/fill" | while IFS= read -r key; do
+			case $key in title) v=$(derive_title "$p") ;; *) v=$(derive_created "$p") ;; esac
+			awk -v op=set -v key="$key" -v val="$v" -v self="$p" -v idsf="$STATE/ids" "$AWK_RESOLVE$AWK_FMWRITE" "$f" >"$W/w" && cat "$W/w" >"$f"
+		done
+		awk -F'\t' -v p="$p" 'BEGIN { OFS = "\t" } $1 == p { print $2, $3, $4 }' "$W/out/add" | while IFS='	' read -r op key v; do
+			awk -v op="$op" -v key="$key" -v val="$v" -v self="$p" -v idsf="$STATE/ids" "$AWK_RESOLVE$AWK_FMWRITE" "$f" >"$W/w" && cat "$W/w" >"$f"
+		done
+		awk -F'\t' -v p="$p" '$1 == p { print $2 }' "$W/out/note" >"$W/one"
+		if [ -s "$W/one" ]; then
+			[ -z "$(tail -c 1 "$f")" ] || echo >>"$f"
+			[ -z "$(tail -n 1 "$f" | tr -d ' \t')" ] || echo >>"$f"
+			cat "$W/one" >>"$f"
+		fi
+	done <"$W/touched"
+
+	(cd "$W" && diff -r -u a b) >"$W/diff" || :
+	sed -e 's#^--- a/#--- #' -e 's#^+++ b/#+++ #' "$W/diff" >"$STATE/migrate.diff"
+	nd=$(grep -c '^diff ' "$W/diff" || :)
+	before=$("$SELF" -C "$ROOT" check | sed -n 2p | sed 's/^check     //')
+	after=$(XDG_CACHE_HOME=$W/cache "$SELF" -C "$W/b" check | sed -n 2p | sed 's/^check     //')
+	nset=$(cat "$W/out/nset")
+	nleft=$(wc -l <"$W/out/left" | tr -d ' ')
+
+	if [ "$APPLY" = 1 ]; then
+		n=0
+		while IFS= read -r p; do
+			case $p in docs/*) ;; *) continue ;; esac
+			cmp -s "$W/b/$p" "$p" && continue
+			cat "$W/b/$p" >"$p"
+			n=$((n + 1))
+		done <"$W/touched"
+		echo "migrate   applied: $n docs changed · $(cat "$W/out/stats")"
+		echo "before    $before"
+		echo "after     $("$SELF" -C "$ROOT" check | sed -n 2p | sed 's/^check     //')"
+		[ "$nset" = 0 ] || echo "settle    $nset open, left as they are: sp check lists them"
+		migrate_left
+		return 0
+	fi
+
+	echo "migrate   preview: $nd docs change · $(cat "$W/out/stats") · nothing written"
+	echo "before    $before"
+	echo "after     $after"
+	if [ -n "$SETTLE" ]; then
+		echo "settle    $SETTLE is ready"
+	elif [ "$nset" != 0 ]; then
+		sort -t '	' -k1,1 -s "$W/out/settle" >"$sf"
+		echo "settle    $nset open: $sf"
+	else
+		rm -f "$sf"
+		echo "settle    none open"
+	fi
+	if [ "$nd" = 0 ]; then
+		echo "next      nothing to apply"
+	elif [ "$nset" != 0 ] && [ -z "$SETTLE" ]; then
+		echo "next      review the diff and answer each settle line, then: sp migrate --apply --settle <file>"
+	else
+		echo "next      review the diff, then: sp migrate --apply${SETTLE:+ --settle $SETTLE}"
+	fi
+	echo "diff      $STATE/migrate.diff"
+	migrate_left
+	cat "$STATE/migrate.diff"
+}
+
+# --- The answer: header first, then the query, held to the output contract ---
+# (held, above). The answer goes through a file, not a pipe, so the query's
+# exit status is kept.
+
+set +e
+(
+	set -e
+	echo "sp $Q${ARG:+ $ARG} · $ROOT · $LAYER$REGEN"
+	case $Q in
+	def) q_def ;;
+	docs) q_docs ;;
+	module) q_module ;;
+	file) q_file ;;
+	unresolved) q_unresolved ;;
+	trace) q_trace ;;
+	check) q_check ;;
+	tree) q_tree ;;
+	outline) q_outline ;;
+	show) q_show ;;
+	new) q_new ;;
+	supersede) q_supersede ;;
+	relate) q_relate ;;
+	ledger) q_ledger ;;
+	migrate) q_migrate ;;
+	esac
+) >"$T/answer"
+st=$?
+set -e
+cap=60
+[ "$SEALED$UNLINKED$ALL" = 000 ] || cap=0
+hint="narrow with --type, or ask for one doc or symbol"
+[ "$Q" != migrate ] || hint="sp migrate --all prints them all; the whole diff is in $STATE/migrate.diff"
+held "$T/answer" "$cap" "$hint"
+exit "$st"

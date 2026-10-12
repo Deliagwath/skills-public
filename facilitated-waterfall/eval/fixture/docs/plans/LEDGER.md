@@ -1,0 +1,1 @@
+- plan-001 — implemented 2026-09-03 — verification: 4/4 passed

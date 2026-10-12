@@ -43,12 +43,17 @@ Glossary for this repo. Terms only — no implementation detail.
   every other artifact type: prose under `## Notes`. Only the ADR carries the MADR
   headings.
 - **Supersession** — a later artifact replacing an earlier one, in whole or in part.
-  The successor points at the predecessor; the predecessor is not rewritten. Carried
-  by the optional `supersedes` frontmatter key on the successor. Partial replacement is the same
-  edge — the part absorbed is named in the body, not in a second key.
+  Two edges, written together: `supersedes` on the successor and `superseded-by` (a
+  list) on the predecessor, whose body and decision are never rewritten (ADR 0005,
+  replacing the forward-only rule). Partial replacement is the same edge — the part
+  absorbed is named in the successor's body, not in a second key.
 - **Forward-only edge** — an edge recorded solely in the frontmatter of the newer
-  artifact. The older artifact is never edited to reflect it. Supersession and the
-  closing of an open question are both forward-only.
+  artifact. The older artifact is never edited to reflect it. The closing of an open
+  question (`closes`) is forward-only; supersession no longer is.
+- **Artifact id** — an artifact's `id:`, `<kind>-<number>` (`direction-020`,
+  `task-084`, `adr-0034`, `story-013`; a probe keeps `probe-YYYY-MM-DD-slug`).
+  Unique in a workspace by construction, and the form every link and prose citation
+  uses (ADR 0006). The file name keeps its `NNN-slug.md` form.
 - **Provenance over completeness** — rationale is recorded only when it was
   genuinely raised. "No alternatives were weighed" is an acceptable and common
   outcome; an invented alternative is a defect, not a gap filled.
@@ -63,3 +68,46 @@ Glossary for this repo. Terms only — no implementation detail.
 - **Fan-out rejection test** — the check that a unit of work does not increase the
   number of artifacts a Direction spawns. Applied to a Task rather than measured on
   the corpus.
+- **Cause tag** — the likely cause of a review or audit finding. A *context gap* means
+  the governing docs didn't say it; a *judgment gap* means they did and the work
+  missed it. The tag calibrates where fixes should go, and is distinct from how a
+  finding is routed now.
+- **Author-blind risk** — the test for planning depth. Work gets a Plan or a design
+  interview when its author is likely blind to how it can go wrong, not because it
+  is important.
+
+## Knowledge
+
+- **Workspace** — the unit that accumulates knowledge: one repo and its `docs/`.
+  The analogue of an OpenRig *seat*. A session is its *occupant*: it inherits what
+  the workspace knows, and deposits what it learned.
+- **Maturity stage** — how settled a knowledge entry is, from a fixed vocabulary.
+  Distinct from freshness (`unverified` / `stale`), which says whether the entry is
+  still true.
+- **Portable entry** — a knowledge entry that would read correctly in a different
+  workspace. Marked, never moved.
+- **Cut test** — "has this changed a decision recently?" Applied in pruning to
+  entries that are still true.
+- **Effect observed** — evidence, at a later real opportunity, that a change had its
+  intended effect. Distinct from mechanics verified. It is what separates `done`
+  from `implemented`.
+- **Read depth** — what a resuming session actually re-read (full, partial, not
+  read), as opposed to what it inherited from a summary.
+- **Intent line** — an artifact's one-sentence `intent:`. Walking `relates` upward
+  composes the intent lines one per level; a missing line is a gap, never filled in.
+- **Handbook** — a workspace's short, graded lessons for working in it: commands,
+  conventions, gotchas, and the purpose of each area. It is inherited by the next
+  session and pruned by the cut test. Distinct from *research*, which is long-form
+  and only looked up.
+- **Sealed artifact** — finished history: a reconciled or abandoned probe, a Plan
+  with a ledger line, a superseded ADR. Not loaded when a session inherits;
+  reachable by lookup.
+- **Inherit point** — a moment a skill already passes through at which it reads
+  what its workspace knows about the area at hand. Reading is tied to these
+  moments, never to a separate step.
+- **Deposit** — what a probe's close adds to the handbook, and promotes or demotes
+  in it, from what the probe observed.
+- **Fence** — the end of a body of work: the last Task of an Epic, or the last Epic
+  of a Direction, implemented. A trigger for distilling.
+- **Retirement** — removing an idle entry from the handbook by moving it, verbatim
+  and with its reason, into the sealed probe that cut it. Nothing is deleted.

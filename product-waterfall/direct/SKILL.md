@@ -14,6 +14,8 @@ Descend from intent toward the product waterline. Produce a committed Direction 
 - Loaded by `bottom-up` with a Story and an engineering finding → **Refine** in subroutine mode (see `conventions` → Hooks)
 - Ambiguous → ask: "Are you shaping a new Direction, breaking work down, or refining an existing Epic or Story?"
 
+**Inherit point: entry.** When the entry names an existing Direction, Epic or Story, run `sp tree <id>` for what is under it and `sp trace <id>` for its intent trace, and `sp --role top-down docs D-NNN` for each D-/X-id it cites: the row, what supersedes it, and the docs citing it. `sp` is at `~/.agent-skills/facilitated-waterfall/scripts/sp`, if installed; its rules are FW `conventions` → Handbook → Inherit. Read `docs/handbook/index.md` if it exists. State read depth before the interview: the `sp` budget line (or `sp absent`), then each doc as `FULL` / `PARTIAL` / `NOT_READ`. A raw idea makes no call, and the statement says so. Without `sp`, walk `relates` upward and `grep -rn "PRODUCT.md#D-NNN" docs/`.
+
 ---
 
 ## Phase 1 — Shape (Direction)
@@ -62,9 +64,9 @@ Interview the PM through each section using the drilling technique from `convent
 
 ### 1e — Write the Direction
 
-Number sequentially from the highest file in `docs/product/directions/`. Write `docs/product/directions/NNN-slug.md`:
+Make the file with `sp new product-direction "<title>" --relates docs/PRODUCT.md#D-NNN,… --intent "…"`: it takes the next number, writes `docs/product/directions/NNN-slug.md` (`id: product-direction-NNN`) with its frontmatter and section headings, and prints the path. Fill it, then run `sp check <id>`. Without `sp`, number from the highest file in `docs/product/directions/` and write it by hand:
 
-**Frontmatter:** `id`, `title`, `created`, `relates: [docs/PRODUCT.md#D-NNN, …]` (the entries that constrain it, plus any related Direction from 1b). Optional `tracker:`.
+**Frontmatter:** `id` (`product-direction-NNN`), `title`, `created`, `relates: [docs/PRODUCT.md#D-NNN, …]` (the entries that constrain it, plus any related Direction from 1b). Optional `tracker:`.
 
 **Body:** Problem · Appetite · Out of Scope · Success Signal · Constraints
 
@@ -111,10 +113,12 @@ Challenge each against the parent's Out of Scope and against docs/PRODUCT.md.
 
 ### 2e — Draft, confirm, write
 
-Allocate the whole batch of numbers atomically. For each unit, present the full draft: "Confirm this one? [yes / edit / skip / cancel all]". On yes, write:
+For each unit, present the full draft: "Confirm this one? [yes / edit / skip / cancel all]". On yes, write it with `sp`, which numbers each one under a lock:
 
-- Epic → `docs/product/epics/NNN-slug.md`, `relates: [<direction id>]`
-- Story → `docs/product/stories/NNN-slug.md`, `relates: [<epic id or direction id>]`
+- Epic → `sp new product-epic "<title>" --relates <product-direction-id>` (`docs/product/epics/NNN-slug.md`)
+- Story → `sp new story "<title>" --relates <product-epic-id or product-direction-id>` (`docs/product/stories/NNN-slug.md`)
+
+Run `sp check <id>` on each, and `sp tree <product-direction-id>` to see the batch. Without `sp`, allocate the batch's numbers in one pass and write the frontmatter by hand.
 
 If the PM gets impatient, offer: "Want me to draft the remaining N units as a batch for review?" Confirm the batch, then write sequentially.
 
@@ -170,5 +174,6 @@ In subroutine mode, return the outcome to `bottom-up`: the Revision text, or "St
 - Direction first. Never write an Epic or Story without a Direction above it.
 - Stop at the Story. Never write FW Directions, Tasks, ADRs, Plans, or code; hand off to `top-down`.
 - Never call an external tracker. `tracker:` is an optional link only.
+- Never deposit into `docs/handbook/`. `direct` authors intent and closes no probe; `reflect` and `bottom-up` deposit at their close.
 - Do not auto-chain between phases or into `top-down`. Each is a deliberate invocation.
 - Confirm before every write: Direction, Epic, Story, Revision, docs/PRODUCT.md entry.

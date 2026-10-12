@@ -11,7 +11,7 @@ This skill is **read-only**. It reports drift. It never mutates artifacts.
 
 ## Phase 1 — Collect the boundaries
 
-Read the target and walk `relates` **upward** to its governing artifacts (Plan → Task → Epic → Direction) and **sideways** to every ADR it references. From each, extract only the constraints — the things the implementation is not allowed to violate:
+Read the target and walk `relates` **upward** to its governing artifacts (Plan → Task → Epic → Direction; `sp trace <id>`) and **sideways** to every ADR it references. Run `sp check <id>` on each artifact you walk: a broken or ambiguous link is a boundary you could not collect, so report it rather than guess. Read each constraint section with `sp show <id> <section>`. From each, extract only the constraints — the things the implementation is not allowed to violate:
 
 - **ADR** — Decision and Consequences. Non-negotiable.
 - **Plan** — Steps (what was to be built) and Verification (observable checks).
@@ -19,7 +19,9 @@ Read the target and walk `relates` **upward** to its governing artifacts (Plan �
 - **Direction** — Constraints, Appetite, and Out of scope.
 - **Ledger** — check `docs/plans/LEDGER.md` for an entry matching the Plan's id. Note the claimed date and verification summary as a boundary to check, not as ground truth.
 
-List every boundary you collected before touching the code. These are the audit criteria.
+**Inherit point:** for each path the implementation touches (a code-path argument, or the files from Phase 2), run `sp docs <path>` (`conventions` → Handbook → Inherit). A live doc linked to the code but missing from the `relates` walk is a boundary too. Note it as found by link, not by `relates`. `sp` is `~/.agent-skills/facilitated-waterfall/scripts/sp`, not on `PATH`: test that file, not `which sp`. Without it, grep `docs/` for the paths.
+
+List every boundary you collected before touching the code. These are the audit criteria. State read depth with them.
 
 ## Phase 2 — Locate the implementation
 
@@ -41,16 +43,25 @@ Run cheap Verification commands where the Plan lists them. State evidence for ev
 
 ## Phase 4 — Report
 
-Present findings grouped by severity, violations first:
+Tag every non-conforming verdict with its likely cause. You assign the tag; never ask the user to.
+- `CONTEXT-GAP`: the governing docs did not say it, so the fix routes to an ADR, a Task or a handbook entry.
+- `JUDGMENT-GAP`: the docs said it and the build missed it, so the fix routes to code.
+- `UNCLEAR`: you can't tell which. This is allowed.
+
+Present findings grouped by severity, violations first, and end with a count line:
 
 ```
-docs/adr/004-no-sync-io.md     VIOLATED       src/cache.ts:88 does blocking read in request path
-docs/tasks/003-auth.md         DRIFT          added password reset — outside Plan steps
-docs/plans/005-auth.md         UNVERIFIED     `npm run e2e:auth` fails (2 specs)
-docs/plans/006-billing.md      LEDGER STALE   marked implemented 2026-05-01, but `npm run e2e:billing` now fails
-docs/plans/007-search.md       UNRECORDED     code complete, no ledger entry — append one
-docs/directions/001.md         CONFORMS       no scope-creep against Out of scope
+adr-0004                       VIOLATED       JUDGMENT-GAP  src/cache.ts:88 does blocking read in request path
+task-003                       DRIFT          CONTEXT-GAP   added password reset — Plan silent on recovery flow
+plan-005                       UNVERIFIED     UNCLEAR       `npm run e2e:auth` fails (2 specs)
+plan-006                       LEDGER STALE   JUDGMENT-GAP  marked implemented 2026-05-01, but `npm run e2e:billing` now fails
+plan-007                       UNRECORDED     JUDGMENT-GAP  code complete, no ledger entry — append one
+direction-001                  CONFORMS                     no scope-creep against Out of scope
+
+Causes: 1 CONTEXT-GAP · 3 JUDGMENT-GAP · 1 UNCLEAR
 ```
+
+A run of CONTEXT-GAPs says the anchors need improving; a run of JUDGMENT-GAPs says the work does.
 
 For each violation or drift, recommend the corrective action and name who owns the call:
 

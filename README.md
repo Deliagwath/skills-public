@@ -1,10 +1,11 @@
 # skills
 
-A collection of AI-agent skills (slash commands) for Claude Code, Cursor, OpenCode, Mirai, and DeepSeek Harness, organized into three namespaces:
+A collection of AI-agent skills (slash commands) for Claude Code, Cursor, OpenCode, Mirai, and DeepSeek Harness, organized into four namespaces:
 
 - **`facilitated-waterfall`** — an append-only, in-repo documentation system designed so that agents work from a rich, durable, and *enforceable* source of project knowledge rather than from a single throwaway prompt.
 - **`product-waterfall`** — the same two-direction discipline one layer up, for product decisions. It stacks on top of facilitated-waterfall and hands off to it at the Story.
 - **`general-usage`** — general-purpose skills for everyday work in a workspace, useful on their own regardless of whether you adopt facilitated-waterfall.
+- **`debugging`** — skills that find and fix defects in the tooling itself from evidence, starting with `improve-sp`, which turns `sp`'s call log into fixes.
 
 ## Why this exists
 
@@ -75,8 +76,8 @@ General-purpose skills for everyday work in a workspace — reviewing, exploring
 
 | Skill | What it does |
 |-------|--------------|
-| `note` | Records what a session learned into a fixed six-file knowledge base in `docs/knowledge/`; also prunes stale notes. |
-| `recall` | Loads knowledge relevant to a query from `docs/knowledge/` before you start work. The read half of `note`. |
+| `note` | Records what a session learned into a fixed five-file handbook in `docs/handbook/`; also prunes stale notes, and once per repo backfills it from closed probes. Terms go to `docs/CONTEXT.md`. |
+| `recall` | Loads what the handbook in `docs/handbook/` knows about a query before you start work. The read half of `note`. |
 | `review` | Reviews a diff/branch/PR or a waterfall document for correctness, quality, consistency. |
 | `simulate` | Traces every execution branch of a function/route/system and writes the findings out. |
 | `supervise` | Reviews implementation against plans + ADRs in iterative cycles with fresh subagents. |
@@ -87,9 +88,17 @@ General-purpose skills for everyday work in a workspace — reviewing, exploring
 
 If you *do* run facilitated-waterfall, `to-waterfall` provides an optional path back into it: do exploratory work with these skills, then promote what's worth keeping into the append-only system.
 
+### `debugging/`
+
+Skills that find and fix defects in the tooling itself, from evidence.
+
+| Skill | What it does |
+|-------|--------------|
+| `improve-sp` | Reads `sp`'s own call log (`SP_LOG`, through `sp log`), re-runs a failed or flagged call exactly, judges whether `sp` is at fault, and hands a real defect to `bottom-up` with the record as its trigger. Fixes land in `sp` with a regression case in `test.sh`. |
+
 ## Core principles
 
-- **Append-only.** Artifacts are not edited in place once they record a decision. A changed decision is captured by appending a *new* ADR that supersedes the old one — the history of why stays intact.
+- **Append-only.** Artifacts are not edited in place once they record a decision. A changed decision is captured by appending a *new* ADR that supersedes the old one — the history of why stays intact. The old one gains only a `superseded-by` key, so a reader of it sees the change first.
 - **Completion is recorded, not inferred.** `implement` appends one line to `docs/plans/LEDGER.md` when a Plan's verification passes — done once, never edited. A wrong entry is fixed by a new line, not a rewrite, same as ADR supersession. This is what lets `what-next` and `audit-doc` know a Plan is finished without guessing from code or git history.
 - **The `relates` graph is the source of truth.** Links point upward (Epic→Direction, Task→Epic, Plan→Task, ADR→artifact) and are fixed at creation. A child's existence proves its parent was broken down; the codebase proves a Plan was implemented.
 - **Code is ground truth; docs are the boundary.** When they disagree, that disagreement *is* the finding. The `conventions` audit reports it rather than silently picking a side.
@@ -121,7 +130,7 @@ docs/
 
 Everything lives under `docs/`. The two glossaries are deliberately separate: product terms go in `PRODUCT.md`, engineering terms in `CONTEXT.md`, and a term lives in exactly one of them.
 
-Every durable file carries frontmatter with at least `id`, `title`, `created`, and `relates: [...]`, and is numbered sequentially from the highest existing file in its directory. **Probes are the exception**: they are mutable working memory (`open` → `reconciled`/`abandoned`), use collision-free dated ids (`probe-YYYY-MM-DD-slug`), and freeze once reconciled — everything a probe *produces* stays append-only.
+Every durable file carries frontmatter with at least `id`, `title`, `created`, and `relates: [...]`, and is numbered sequentially from the highest existing file in its directory. The `id` is kind-prefixed (`direction-020`, `task-084`, `adr-0034`, `story-013`), and links and prose cite artifacts by it. `sp new` writes all of this. **Probes are the exception**: they are mutable working memory (`open` → `reconciled`/`abandoned`), use collision-free dated ids (`probe-YYYY-MM-DD-slug`), and freeze once reconciled — everything a probe *produces* stays append-only.
 
 ## Installation
 
@@ -148,6 +157,10 @@ To install into specific clients only, name them — this replaces detection:
 > Symlinked clients read this repo as it stands: an edit is live with no reinstall. OpenCode and Mirai get copies, because neither is verified to follow a linked skill folder; re-run `install.sh` after an edit for them.
 >
 > OpenCode, Mirai and DSH require YAML frontmatter (`name` + `description`) in every skill; the installer validates this and refuses to install a namespace with any skill missing it.
+
+**Shipped scripts.** A namespace with a `scripts/` folder (today, `facilitated-waterfall/scripts/sp`, with `nav` as an alias for its read verbs) is linked at `~/.agent-skills/<namespace>/scripts/`, the one path every skill names, whatever the client. Both waterfalls read and write artifacts through `sp`: `new`, `supersede`, `relate` and `ledger` write frontmatter, links and ledger lines; `check` reports what breaks navigation; `trace`, `tree`, `outline` and `show` read docs; `def`, `docs`, `module` and `file` link code and docs. `sp` works best with [Universal Ctags](https://ctags.io), [mdq](https://github.com/yshavit/mdq) and mikefarah's [yq](https://github.com/mikefarah/yq), each optional with an awk or grep fallback. If one is missing, the installer names the package-manager command and asks before running it; a non-interactive run only prints it. On macOS, Apple's `/usr/bin/ctags` can come first on `PATH`; the installer warns about it, and `sp` finds the Universal binary regardless.
+
+**Tests.** `facilitated-waterfall/scripts/test.sh` checks every `sp` verb in four tool modes. `facilitated-waterfall/eval/` is the small-model suite (Task 028), kept outside `scripts/` so it is never installed: `eval/run.sh` covers six scenarios (`bottom-up`, `top-down`, `design`, a resume, and a run without `sp`) on Opus 5.5 (the user dropped Haiku, the local model and Sonnet on 2026-10-09), three runs a cell, and never calls a model itself. `run.sh prepare` makes one run dir per cell, each with its own `/tmp` copy of a small fixture workspace and a `prompt.txt` holding the one line to type. You open a Claude Code session in each `ws/` yourself, on that cell's model, type the line and take every recommended answer. `run.sh judge` then takes each session's transcript from `~/.claude/projects/` and judges it from the transcript and the workspace's final state, never by a model, and prints one pass/fail table. `--fixture <dir> --scenarios <file>` prepares the same scenarios on a throwaway clone of a real workspace instead, judging only what each run added (an unmigrated clone starts malformed). `eval/test.sh` tests the suite itself without a model call.
 
 **DSH and multiple harness homes.** DSH scans `$DSH_HOME/skills` (per home) before `~/.agents/skills` (shared by every home on the machine). The installer writes the per-home root and resolves the home the way DSH does — `$DSH_HOME`, else `~/.dsh` — so a box running more than one harness chooses which one gets the skills by choosing the home for the run:
 
