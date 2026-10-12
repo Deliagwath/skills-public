@@ -692,7 +692,9 @@ fi
 mkdir -p "$STATE"
 cd "$ROOT"
 # The call log's wrapper asks which workspace this call resolved (Direction 005).
-[ -z "${SP_LOG_META:-}" ] || { printf '%s\n%s\n' "$ROOT" "$ROLE" >"$SP_LOG_META"; } 2>/dev/null || :
+# The first writer is the logged call; an sp it runs (migrate's check on its
+# copy) inherits the file and must not overwrite it.
+[ -z "${SP_LOG_META:-}" ] || [ -s "$SP_LOG_META" ] || { printf '%s\n%s\n' "$ROOT" "$ROLE" >"$SP_LOG_META"; } 2>/dev/null || :
 
 # --- Tools: Universal Ctags only; Apple's BSD ctags shadows it on PATH (F10) ---
 
@@ -1154,6 +1156,10 @@ if [ "$GIT" = 1 ]; then
 	{
 		git -c core.quotePath=false ls-files -d
 		git -c core.quotePath=false ls-files -s | awk '$1 == "160000" { sub(/^[^\t]*\t/, ""); print }'
+		# A symlink is another name for a file already listed (nav -> sp), not a
+		# second copy of its definitions; find -type f skips them the same way.
+		git -c core.quotePath=false ls-files -s | awk '$1 == "120000" { sub(/^[^\t]*\t/, ""); print }'
+		git -c core.quotePath=false ls-files -o --exclude-standard | while IFS= read -r f; do [ ! -L "$f" ] || printf '%s\n' "$f"; done
 	} >"$T/drop"
 	if [ -s "$T/drop" ]; then grep -vxF -f "$T/drop" "$T/all" >"$T/listing" || :; else mv "$T/all" "$T/listing"; fi
 else
@@ -1665,7 +1671,9 @@ q_trace() {
 			seen[cur] = 1
 			if (cur in bad) nbad++
 			fm_read(cur)
-			id = FMS["id"]; title = FMS["title"]; gsub(/^"|"$/, "", title); intent = FMS["intent"]
+			# Unquoted as the index reads them, so an id shown is an id to type.
+			id = FMS["id"]; title = FMS["title"]; intent = FMS["intent"]
+			gsub(/^["\047]|["\047]$/, "", id); gsub(/^["\047]|["\047]$/, "", title); gsub(/^["\047]|["\047]$/, "", intent)
 			if (id == "") id = cur
 			if (intent != "") out(sprintf("trace     %s%s: %s", id, anchor, intent))
 			else out(sprintf("trace     %s%s: no intent line%s", id, anchor, (title != "" ? " · (title) " title : "")))
@@ -1673,7 +1681,12 @@ q_trace() {
 			next_ref = ""; t = tier(kindof(cur))
 			for (i = 1; i <= n; i++) {
 				v = rel[i]
-				if (v ~ /(^|\/)adr[\/-]/ || v ~ /(^|\/)probes\// || v ~ /^probe-/) continue
+				# A doc in another workspace is not followed (as sp check says), and
+				# a probe or ADR there is no parent either; neither is broken.
+				ow = (v ~ /\// && v !~ /^(\.\/)?docs\// || v ~ /^[A-Za-z0-9_.-]+:[^\/]/)
+				x = v; if (ow) sub(/^[A-Za-z0-9_.-]+:/, "", x)
+				if (x ~ /(^|\/)adr[\/-]/ || x ~ /(^|\/)probes\// || x ~ /^probe-/) continue
+				if (ow) { out(sprintf("trace     another workspace: %s (not followed)", v)); exit }
 				w = v; sub(/#.*$/, "", w)
 				p = rs(w, cur)
 				# Ambiguous among docs none of which sits higher: not a parent.
@@ -1897,7 +1910,8 @@ q_tree() {
 				q = rs(FM["relates", j], p); if (q == "" || q == p) continue
 				if (k != "adr" && k != "probe" && tier(k) >= tier(R_KP[q])) continue
 				CH[q] = CH[q] " " p
-				if (k == "plan" && R_KP[q] == "task") { NPL[q]++; PL[p] = q }
+				# A Plan may serve several Tasks: it counts for each, once.
+				if (k == "plan" && R_KP[q] == "task" && !((p, q) in PL)) { NPL[q]++; PL[p, q] = 1 }
 			}
 			# Both edges of one supersession name its successor once.
 			for (j = 1; j <= FMC["superseded-by"]; j++) { q = rs(FM["superseded-by", j], p, 1); if (q != "" && !((p, q) in BYS)) { BYS[p, q] = 1; BY[p] = (p in BY ? BY[p] ", " : "") canon(q) } }
@@ -1911,7 +1925,7 @@ q_tree() {
 			if (match(x, / — (implemented|done|effect not achieved|reconciled|resolved) [0-9-]+/)) LED[q] = substr(x, RSTART + 5, RLENGTH - 5)
 			if (x ~ / — implemented /) PI[q] = 1
 		}
-		for (p in PL) if (p in PI) NPI[PL[p]]++
+		for (pq in PL) { split(pq, a, SUBSEP); if (a[1] in PI) NPI[a[2]]++ }
 		SEEN[root] = 1
 		walk(root, 1)
 		printf "tree      %s  %s  · %d descendants%s\n", canon(root), root, nd, (state(root) != "" ? "  [" state(root) "]" : "")
@@ -2480,7 +2494,12 @@ st=$?
 set -e
 cap=60
 [ "$SEALED$UNLINKED$ALL" = 000 ] || cap=0
-hint="narrow with --type, or ask for one doc or symbol"
-[ "$Q" != migrate ] || hint="sp migrate --all prints them all; the whole diff is in $STATE/migrate.diff"
+# Only the doc listings read --type; every other verb is told what it does take.
+case $Q in
+docs | file | module) hint="narrow with --type, or ask for one doc or symbol" ;;
+tree) hint="sp tree <descendant id> reads one branch; --all prints them all" ;;
+migrate) hint="sp migrate --all prints them all; the whole diff is in $STATE/migrate.diff" ;;
+*) hint="--all prints them all, or ask for one doc or symbol" ;;
+esac
 held "$T/answer" "$cap" "$hint"
 exit "$st"

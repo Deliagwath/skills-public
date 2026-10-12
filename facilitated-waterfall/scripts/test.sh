@@ -916,6 +916,9 @@ log_tests() {
 	hasnt "log 38v the default stores no answer" "$(tail -1 "$LOG")" '"stdout":'
 	(cd "$R" && SP_LOG=$LOG SP_LOG_LEVEL=full "$SP" outline task-001 >/dev/null 2>&1)
 	has "log 38w SP_LOG_LEVEL=full stores it" "$(tail -1 "$LOG")" '"stdout":"sp outline task-001 '
+	# migrate runs sp check on a copy; the record keeps the workspace of the call.
+	(cd "$R" && SP_LOG=$LOG "$SP" migrate >/dev/null 2>&1)
+	has "log 38w2 a nested sp leaves the workspace alone" "$(tail -1 "$LOG")" "\"ws\":\"$R\",\"cwd\":\"$R\",\"name\":\"sp\",\"argv\":\\[\"migrate\"\\]"
 	# A cut answer is flagged: sp log over many distinct failures stops at 60 lines.
 	i=0
 	while [ $i -lt 25 ]; do (cd "$R" && SP_LOG=$LOG "$SP" "nope$i" >/dev/null 2>&1); i=$((i + 1)); done
@@ -1116,14 +1119,15 @@ run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
 	has "$mode 25b the link itself is kept" "$out" 'supersedes docs/adr/0010-before.md (lookup)'
 	hasnt "$mode 25c an ADR superseded with a note is sealed" "$out" 'on-match  docs/adr/0010-before.md'
 	out=$(cd "$R" && nav trace docs/plans/007-p.md)
-	has "$mode 25d short id resolves Plan -> Task" "$out" 'trace     "007": "T seven"'
-	has "$mode 25e short id resolves Task -> Epic" "$out" 'trace     "epic-007": "E seven"'
-	has "$mode 25f short id resolves Epic -> Direction" "$out" 'trace     "007": "D seven"'
+	has "$mode 25d short id resolves Plan -> Task" "$out" 'trace     007: T seven$'
+	has "$mode 25e short id resolves Task -> Epic" "$out" 'trace     epic-007: E seven$'
+	has "$mode 25f short id resolves Epic -> Direction" "$out" 'trace     007: D seven$'
+	hasnt "$mode 25f2 a quoted id is shown unquoted" "$out" '"'
 	hasnt "$mode 25g adr- ids are skipped" "$out" 'Before'
 	out=$(cd "$R" && nav trace 007)
 	has "$mode 25h a bare shared id is ambiguous, not picked" "$out" '^trace     ambiguous link: 007 (docs/directions/007-d.md docs/plans/007-p.md docs/tasks/007-t.md docs/epics/007-e.md)'
 	out=$(cd "$R" && nav trace epic-007)
-	has "$mode 25i a unique short id resolves" "$out" 'trace     "epic-007": "E seven"'
+	has "$mode 25i a unique short id resolves" "$out" 'trace     epic-007: E seven$'
 	out=$(cd "$R" && nav file tools/extra.py)
 	has "$mode 25j a ## handbook entry is counted" "$out" '^handbook  1 entries matched in 1 files'
 
@@ -1146,6 +1150,14 @@ run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
 	out=$(cd "$R" && nav trace task-099 2>&1) && no "$mode 26i a missing root exits 2" "$out" || ok "$mode 26i a missing root exits 2"
 	has "$mode 26j a missing root names the highest of its kind" "$out" '^sp: task-099 names no doc: the highest task here is task-0'
 	hasnt "$mode 26k a missing root is no broken link" "$out" 'broken link'
+	# A link into another workspace is not followed, and is not broken.
+	out=$(cd "$R" && nav trace task-044)
+	has "$mode 26p another workspace is said, not followed" "$out" '^trace     another workspace: other/docs/tasks/001-x.md (not followed)$'
+	hasnt "$mode 26q another workspace is no broken link" "$out" 'broken link'
+	printf -- '---\nid: task-092\ntitle: "T092"\nintent: T ninety-two.\nrelates: ["orchestrator:probe-x", epic-030]\n---\n' | mkfile "$R/docs/tasks/092-out.md"
+	out=$(cd "$R" && nav trace task-092)
+	has "$mode 26r a probe in another workspace is passed over" "$out" '^trace     epic-030: E thirty.'
+	rm "$R/docs/tasks/092-out.md"
 	# file takes a path; an id gets the path to use, or the miss.
 	out=$(cd "$R" && nav file task-030 2>&1) && no "$mode 26l file on an id exits 2" "$out" || ok "$mode 26l file on an id exits 2"
 	has "$mode 26m file on an id names its path" "$out" '^sp: file takes a path: sp file docs/tasks/030-'
@@ -1373,6 +1385,24 @@ EOF
 	out=$(cd "$R" && nav ledger done task-040 "seen in use at the fixture")
 	out=$(cd "$R" && nav ledger implemented plan-030 "1/1 passed" && nav tree task-031)
 	has "$mode 35D tree: state from the ledger" "$out" '^tree      task-031  docs/tasks/031-x.md  · 1 descendants  \[implemented (1/1 plans)\]'
+	# A Plan that serves two Tasks counts for both (ADR 0004: every Plan relating to it).
+	for n in 090 091; do printf -- '---\nid: task-%s\ntitle: "T%s"\nrelates: [epic-030]\n---\n' $n $n | mkfile "$R/docs/tasks/$n-shared.md"; done
+	printf -- '---\nid: plan-090\ntitle: "P90"\nrelates: [task-090, task-091]\n---\n' | mkfile "$R/docs/plans/090-shared.md"
+	out=$(cd "$R" && nav ledger implemented plan-090 "1/1 passed" && nav tree epic-030)
+	has "$mode 35G tree: a shared Plan counts for its first Task" "$out" 'task-090  T090  \[implemented (1/1 plans)\]'
+	has "$mode 35H tree: a shared Plan counts for its last Task" "$out" 'task-091  T091  \[implemented (1/1 plans)\]'
+	# A cut tree says what tree takes: a branch or --all, not --type, which it ignores.
+	i=100; while [ $i -lt 170 ]; do printf -- '---\nid: plan-%s\ntitle: "P%s"\nrelates: [task-090]\n---\n' $i $i | mkfile "$R/docs/plans/$i-many.md"; i=$((i + 1)); done
+	out=$(cd "$R" && nav tree task-090)
+	has "$mode 35I a cut tree names a branch and --all" "$out" '^more      +[0-9]* more lines (sp tree <descendant id> reads one branch; --all prints them all)$'
+	hasnt "$mode 35J a cut tree never offers --type" "$out" '\-\-type'
+	rm "$R"/docs/plans/1[0-6][0-9]-many.md
+	rm "$R/docs/tasks/090-shared.md" "$R/docs/tasks/091-shared.md" "$R/docs/plans/090-shared.md"
+	# A symlink names a file already indexed: its definitions are not listed twice.
+	ln -s util.sh "$R/src/util-link.sh"
+	out=$(cd "$R" && nav def build_index)
+	[ "$(printf '%s\n' "$out" | grep -c '^def ')" = 1 ] && ok "$mode 35K a symlink adds no second definition" || no "$mode 35K a symlink adds no second definition" "$out"
+	rm "$R/src/util-link.sh"
 	has "$mode 34a a done line" "$(cat "$R/docs/tasks/LEDGER.md")" '^- task-040 — done 2026-10-09 — effect: seen in use at the fixture$'
 	cmp -s "$TMP/t1" "$R/docs/tasks/040-clean.md" && ok "$mode 34b the Task itself is untouched" || no "$mode 34b the Task itself is untouched"
 	out=$(cd "$R" && nav ledger not-achieved task-040 "nobody used it")
