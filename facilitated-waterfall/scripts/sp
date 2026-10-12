@@ -844,7 +844,7 @@ function rs_miss(ref,  r, k, i, hi, best) {
 # candidates and RS_LIST lists them (several: ambiguous; none: broken). `from`
 # is the linking doc, for the upward rule; `same` (a supersession edge) prefers
 # a doc of its own kind first.
-function rs(ref, from, same,  r, k, num, c, pk, np, j, a) {
+function rs(ref, from, same,  r, k, num, c, all, np, j, a) {
 	r = ref; sub(/#.*$/, "", r); gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", r)
 	rs_clear()
 	if (r == "") return ""
@@ -864,23 +864,30 @@ function rs(ref, from, same,  r, k, num, c, pk, np, j, a) {
 	rs_take(X_I[r], ""); rs_take(X_S[r], "")
 	if (r ~ /^[0-9]+$/) rs_take(X_N[r], "")
 	if (RS_C <= 1) return RS_C == 1 ? RS_LAST : ""
-	k = kindof(from)
-	pk = k == "plan" ? "task" : k == "task" ? "epic direction story" : k == "epic" ? "direction product-direction" : ""
-	if (same) pk = k " " pk
-	np = split(pk, a, " "); c = RS_LIST
-	for (j = 1; j <= np; j++) {
-		rs_clear(); rs_take(X_I[r], a[j]); rs_take(X_S[r], a[j])
-		if (r ~ /^[0-9]+$/) rs_take(X_N[r], a[j])
+	k = kindof(from); c = RS_LIST
+	if (same) {
+		rs_clear(); rs_take(X_I[r], k); rs_take(X_S[r], k)
+		if (r ~ /^[0-9]+$/) rs_take(X_N[r], k)
 		if (RS_C == 1) return RS_LAST
 	}
-	# The not-downward rule (adr-0007): relates points up, so a candidate on a
-	# lower tier than the linking doc is no candidate; a same-tier one may be.
+	# A doc never links to itself; and the not-downward rule (adr-0007): relates
+	# points up, so a candidate on a lower tier than the linking doc is no
+	# candidate. What is left is what an ambiguity lists.
+	all = c; np = split(c, a, " "); c = ""; RS_C = 0
+	for (j = 1; j <= np; j++) {
+		if (a[j] == from || (tier(k) >= 1 && tier(R_KP[a[j]]) >= 1 && tier(R_KP[a[j]]) < tier(k))) continue
+		c = c (c != "" ? " " : "") a[j]; RS_C++; RS_LAST = a[j]
+	}
+	if (RS_C == 1) { RS_LIST = c; return RS_LAST }
+	# The upward rule (adr-0007): one candidate on a higher tier settles it.
+	# Several higher ones (an Epic and a Direction both 006) are not ranked by
+	# kind: a legacy Task often named its Direction, so that stays ambiguous.
 	if (tier(k) >= 1) {
 		np = split(c, a, " "); RS_C = 0
-		for (j = 1; j <= np; j++) if (!(tier(R_KP[a[j]]) >= 1 && tier(R_KP[a[j]]) < tier(k))) { RS_C++; RS_LAST = a[j] }
+		for (j = 1; j <= np; j++) if (tier(R_KP[a[j]]) > tier(k) && tier(R_KP[a[j]]) < 99) { RS_C++; RS_LAST = a[j] }
 		if (RS_C == 1) { RS_LIST = RS_LAST; return RS_LAST }
 	}
-	RS_C = 2; RS_LIST = c
+	RS_C = 2; RS_LIST = c != "" ? c : all
 	return ""
 }
 '

@@ -746,7 +746,7 @@ migrate_tests() {
 	has "$mode 36d preview: summary first" "$(printf '%s\n' "$out" | sed -n 2p)" '^migrate   preview: [0-9]* docs change'
 	has "$mode 36e before counts" "$out" '^before    [0-9]* artifacts · [0-9]* breaking'
 	has "$mode 36f after counts" "$out" '^after     [0-9]* artifacts · [0-9]* breaking'
-	has "$mode 36g the settle file and its open lines" "$out" "^settle    5 open: $sf"
+	has "$mode 36g the settle file and its open lines" "$out" "^settle    7 open: $sf"
 	has "$mode 36S next comes in the head" "$(printf '%s\n' "$out" | head -n 8)" '^next      review the diff and answer each settle line'
 	has "$mode 36T left: a count and a file, not a list" "$out" "^left      1 links and ids left as they are: $M/.git/nav/migrate.left"
 	has "$mode 36U the cap names --all" "$out" '^more      +[0-9]* more lines (sp migrate --all prints them all'
@@ -759,6 +759,8 @@ migrate_tests() {
 	has "$mode 36l settle: no citation is blank" "$s" '^docs/adr/0002-b.md	relates	002		# candidates: direction-002 task-002$'
 	has "$mode 36m settle: a bare superseded status" "$s" '^docs/adr/0006-f.md	superseded-by	status: superseded		# name its successor$'
 	has "$mode 36n settle: a probe's citation" "$s" '^docs/probes/probe-2026-01-01-p.md	relates	002	task-002	# guess'
+	has "$mode 36X settle: an Epic and a Direction above a Task are not ranked" "$s" '^docs/tasks/001-t.md	relates	001		# candidates: direction-001 epic-001$'
+	has "$mode 36Y settle: no self and nothing below, nor a guess from its own heading" "$s" '^docs/plans/001-p.md	relates	001		# candidates: direction-001 epic-001 task-001$'
 	out=$(cd "$M" && nav migrate --all)
 	hasnt "$mode 36o --all: no cap" "$out" '^more      +'
 	[ -s "$M/.git/nav/migrate.diff" ] && ok "$mode 36p the whole diff is kept" || no "$mode 36p the whole diff is kept"
@@ -773,7 +775,7 @@ migrate_tests() {
 	[ "$before" = "$(msum)" ] && ok "$mode 36s a refused apply writes nothing" || no "$mode 36s a refused apply writes nothing"
 
 	# Apply with a reviewed settle file.
-	awk -F'\t' 'BEGIN { OFS = "\t" } $1 == "docs/adr/0002-b.md" { $4 = "direction-002" } $1 == "docs/adr/0006-f.md" { $4 = "adr-0005" } { print }' "$sf" >"$TMP/settle"
+	awk -F'\t' 'BEGIN { OFS = "\t" } $1 == "docs/adr/0002-b.md" { $4 = "direction-002" } $1 == "docs/adr/0006-f.md" { $4 = "adr-0005" } $1 == "docs/tasks/001-t.md" { $4 = "epic-001" } $1 == "docs/plans/001-p.md" { $4 = "task-001" } { print }' "$sf" >"$TMP/settle"
 	out=$(cd "$M" && nav migrate --apply --settle "$TMP/settle")
 	has "$mode 36t apply: the after counts are live" "$out" '^after     [0-9]* artifacts · 0 breaking'
 	out=$(cd "$M" && nav check --all)
@@ -784,6 +786,8 @@ migrate_tests() {
 	has "$mode 36w a block list keeps its form" "$(cat "$M/docs/tasks/002-t.md")" '^  - task-003$'
 	has "$mode 36x an inline list keeps its form" "$(cat "$M/docs/epics/001-e.md")" '^relates: \[direction-002\]$'
 	has "$mode 36y a settled link" "$(cat "$M/docs/adr/0001-a.md")" '^relates: \[direction-001\]$'
+	has "$mode 36Z a settled upward link" "$(cat "$M/docs/tasks/001-t.md")" '^relates: \[epic-001\]$'
+	has "$mode 36Z2 a sole Task above a Plan settles by rule" "$(cat "$M/docs/plans/003-p.md")" '^relates: \[task-003\]$'
 	has "$mode 36z a note leaves supersedes" "$(sed -n '/^supersedes:/,/^[a-z]/p' "$M/docs/adr/0002-b.md")" '^  - adr-0001$'
 	hasnt "$mode 36A its continuation goes too" "$(awk 'NR > 1 && /^---$/ { exit } { print }' "$M/docs/adr/0002-b.md")" 'of what it said'
 	has "$mode 36B the note lands in the body" "$(tail -n 1 "$M/docs/adr/0002-b.md")" '^Supersession note: adr-0001 (whole, and the rest of what it said)$'
@@ -1119,8 +1123,9 @@ run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
 	has "$mode 25b the link itself is kept" "$out" 'supersedes docs/adr/0010-before.md (lookup)'
 	hasnt "$mode 25c an ADR superseded with a note is sealed" "$out" 'on-match  docs/adr/0010-before.md'
 	out=$(cd "$R" && nav trace docs/plans/007-p.md)
-	has "$mode 25d short id resolves Plan -> Task" "$out" 'trace     007: T seven$'
-	has "$mode 25e short id resolves Task -> Epic" "$out" 'trace     epic-007: E seven$'
+	has "$mode 25d a short id with a Task, an Epic and a Direction above is not ranked" "$out" '^trace     ambiguous link: 007 (docs/directions/007-d.md docs/tasks/007-t.md docs/epics/007-e.md)$'
+	out=$(cd "$R" && nav trace docs/tasks/007-t.md)
+	has "$mode 25e the Task resolves to its Epic" "$out" 'trace     epic-007: E seven$'
 	has "$mode 25f short id resolves Epic -> Direction" "$out" 'trace     007: D seven$'
 	hasnt "$mode 25f2 a quoted id is shown unquoted" "$out" '"'
 	hasnt "$mode 25g adr- ids are skipped" "$out" 'Before'
