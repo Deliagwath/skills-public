@@ -73,7 +73,11 @@ If a question can be answered by exploring the codebase, explore instead of aski
 
 ## Append-only rule
 
-Artifacts are not edited in place once they record a decision. A changed decision is captured by appending a **new** ADR whose `supersedes` field names the old one — the history of *why* stays intact. The old one gets one key and nothing else: `superseded-by`, naming the new one, so a reader of the old file sees it first (adr-0005). `sp supersede <new> --of <old>` writes both edges in one step. The sole exception is the **Probe** (`docs/probes/`), which is working memory: mutable while `open`, frozen when `reconciled`. Everything a probe *produces* (ADRs, Tasks, CONTEXT entries) is append-only.
+Artifacts are not edited in place once they record a decision. A changed decision is captured by appending a **new** ADR whose `supersedes` field names the old one — the history of *why* stays intact. The old one gets one key and nothing else: `superseded-by`, naming the new one, so a reader of the old file sees it first (adr-0005). `sp supersede <new> --of <old>` writes both edges in one step.
+
+**Supersede only a whole replacement; amend a partial one** (adr-0008). Supersession seals the old artifact, so it is right only when no part of it still governs. When the new artifact takes over some parts and the rest still holds, it writes no edge. Its body opens with what it takes over, part by part, and it keeps its ordinary upward `relates` link where its tier allows one. The old artifact gets one appended section, `## Amendment, YYYY-MM-DD: <what changed>`, which names the new id and the parts taken, and says the rest still holds. Earlier text is never edited. The test: is the old artifact wrong (supersede), or does it hold with a carve-out (amend)?
+
+The sole exception is the **Probe** (`docs/probes/`), which is working memory: mutable while `open`, frozen when `reconciled`. Everything a probe *produces* (ADRs, Tasks, CONTEXT entries) is append-only.
 
 ## Artifact formats
 
@@ -104,12 +108,14 @@ docs/CONTEXT.md               Glossary of resolved domain terms — no implement
 |----|-----|---------------------|
 | Make an artifact | `sp new <kind> "<title>" --relates <id>,… --intent "…"` | Take the next number from the highest file in the kind's directory, and write the frontmatter and sections of *Artifact formats* by hand |
 | Supersede | `sp supersede <new> --of <old>` | Add `supersedes: [<old>]` to the new one and `superseded-by: [<new>]` to the old one, nothing else |
+| Amend part of an artifact (adr-0008) | No verb: append `## Amendment, YYYY-MM-DD: …` to the old artifact by hand; no edge | Same |
 | Add a link | `sp relate <id> --to <parent id>` | Add the parent's id to `relates` |
 | Record a Plan's mechanics verified | `sp ledger implemented <plan-id> "<N>/<N> checks passed"` | Append the line of *Status & ledger* |
 | Record an effect seen, or not | `sp ledger done <task-id> "<what was seen, where>"` · `sp ledger not-achieved <task-id> "<what was seen>"` | Same |
 | Close a probe | `sp ledger reconcile <probe-id> "<outcome>"` (it also sets `status: reconciled`) | Append the probe ledger line and set the status |
 | Check what you wrote | `sp check <id>` | — (`sp check` reports any drift later) |
 | Orient on an artifact | `sp tree <id>` (descendants, their state, next free numbers), `sp trace <id>` | Walk `relates` by hand |
+| List the not-done work | `sp frontier [<id>]` (orphans in `what-next`'s classes, shallowest stage first; `--awaiting` lists Tasks awaiting an observed effect) | `what-next`'s grep method |
 | Read part of a doc | `sp outline <id>`, then `sp show <id> <heading or item id>…` | Read the file |
 
 - **After every write, run `sp check <id>`** on what was written, and fix any `break` line before going on. Each line says what to do.

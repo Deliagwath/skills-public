@@ -17,8 +17,9 @@ Glossary for this repo. Terms only — no implementation detail.
   Consequences.
 - **`relates`** — the frontmatter field linking an artifact to its parents and to
   the ADRs bearing on it. Fixed at creation, and therefore reliable.
-- **Frontier** — the deepest stage that has artifacts but whose next stage is
-  missing. What `what-next` computes.
+- **Frontier** — the shallowest stage that has orphans: live artifacts whose
+  next stage is missing (a childless Direction, an unplanned Task, an
+  unimplemented Plan …). What `what-next` recommends from; `sp frontier` lists it.
 - **Drift** — an implementation that has left the boundaries its governing
   artifacts set. What `audit-doc` reports.
 
@@ -42,11 +43,15 @@ Glossary for this repo. Terms only — no implementation detail.
   an ADR: the *Considered Options* and *Pros and Cons of the Options* sections. In
   every other artifact type: prose under `## Notes`. Only the ADR carries the MADR
   headings.
-- **Supersession** — a later artifact replacing an earlier one, in whole or in part.
-  Two edges, written together: `supersedes` on the successor and `superseded-by` (a
-  list) on the predecessor, whose body and decision are never rewritten (ADR 0005,
-  replacing the forward-only rule). Partial replacement is the same edge — the part
-  absorbed is named in the successor's body, not in a second key.
+- **Supersession** — a later artifact replacing an earlier one whole. Two edges,
+  written together: `supersedes` on the successor and `superseded-by` (a list) on
+  the predecessor, whose body and decision are never rewritten (ADR 0005, replacing
+  the forward-only rule). The predecessor is sealed. A partial replacement is not a
+  supersession: it is an *Amendment* (adr-0008).
+- **Amendment** — a later artifact taking over some parts of an earlier one while
+  the rest still holds. It writes no edge. The earlier artifact gets one appended,
+  dated `## Amendment` section naming the later id and the parts taken, and stays
+  live (adr-0008).
 - **Forward-only edge** — an edge recorded solely in the frontmatter of the newer
   artifact. The older artifact is never edited to reflect it. The closing of an open
   question (`closes`) is forward-only; supersession no longer is.
@@ -100,7 +105,8 @@ Glossary for this repo. Terms only — no implementation detail.
   session and pruned by the cut test. Distinct from *research*, which is long-form
   and only looked up.
 - **Sealed artifact** — finished history: a reconciled or abandoned probe, a Plan
-  with a ledger line, a superseded ADR. Not loaded when a session inherits;
+  with a ledger line, a superseded artifact (an amended one stays live). Not loaded
+  when a session inherits;
   reachable by lookup.
 - **Inherit point** — a moment a skill already passes through at which it reads
   what its workspace knows about the area at hand. Reading is tied to these

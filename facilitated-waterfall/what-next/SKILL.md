@@ -1,21 +1,23 @@
 ---
 name: facilitated-waterfall-what-next
-description: Surveys the project's docs and codebase to recommend the single best next action. Finds the frontier of the waterfall — the deepest stage with unfinished work — using the relates graph and codebase evidence. Use when you want to know what to work on next, or when starting fresh in a project.
+description: Surveys the project's docs and codebase to recommend the single best next action. Finds the frontier of the waterfall — the shallowest stage with unfinished work — using the relates graph and codebase evidence. Use when you want to know what to work on next, or when starting fresh in a project.
 ---
 
 Find the **frontier** of the project — the boundary between what's been done and what hasn't — and recommend the single best next action.
 
-The waterfall is a pipeline: Direction → Epic → Task → Plan → Code. Work flows down. The frontier is the deepest stage that has artifacts but whose next stage is missing for some of them.
+The waterfall is a pipeline: Direction → Epic? → Task → Plan → Code. Work flows down. An **orphan** is a live artifact whose next stage is missing; the **frontier** is the shallowest stage that has orphans.
 
 **Source of truth:** the `relates` graph, the ledgers and the codebase. `relates` links point upward (Epic→Direction, Task→Epic, Plan→Task) and are fixed at creation, so they are reliable. A child's existence proves its parent was broken down; the codebase proves a Plan was implemented.
 
-**Constraint:** never read file bodies during the survey. Take `id` and `relates` from `sp tree`, or from frontmatter with shell commands only.
+**Constraint:** never read file bodies during the survey. Take the graph from `sp frontier`, or `id` and `relates` from frontmatter with shell commands only.
 
 ## Phase 1 — Build the graph
 
-**With `sp`** (`~/.agent-skills/facilitated-waterfall/scripts/sp`; test that file), the graph comes in a few calls, bodies unread:
-- `sp tree <direction-id>` for each Direction (and each product Direction): every descendant with its state from the ledgers (Plans implemented, done or not-achieved lines, probe status, superseded-by), and the next free number per kind. A Direction is listed by `ls docs/directions/`.
+**With `sp`** (`~/.agent-skills/facilitated-waterfall/scripts/sp`; test that file), Phases 1–2 are two calls and nothing else, bodies unread:
+- `sp frontier`: every orphan of Phase 2, one row per artifact in its highest class, resume work first, then the stages shallowest first. Each row gives its stage, its id, the skill that closes it, and its `intent:` line or `no intent line`. The summary line counts the Tasks awaiting an observed effect; `sp frontier --awaiting` lists them. State comes from the ledgers, probe status and supersession, as in Phase 2. An `unsure` line, or a row marked `unsure`, means a `relates` link there is broken or ambiguous.
 - `sp check --all`: links that are broken or ambiguous make the graph unreliable there. Name them in the recommendation rather than reason past them.
+
+Do not call `sp tree` once per Direction: `sp frontier` already joins every tree. `sp frontier <id>` narrows to one Direction or Epic when the answer is cut (`+N more`).
 
 **Without `sp`**, from frontmatter by shell:
 
@@ -40,19 +42,21 @@ If `docs/directions/` and `docs/product/` are both empty or missing, this is a g
 
 ## Phase 2 — Find orphans (cheap, no body reads)
 
-From the grep output alone, compute the orphans at each stage by joining `relates` links:
+These are the classes `sp frontier` lists, in its order; its fixture (`scripts/test.sh` case 39) tests them, so a change here changes it too. Cold, compute them from the grep output alone, by joining `relates` links. A link names an artifact by id or, in older docs and ledger lines, by path; both count. A **child** is a live artifact on a lower stage of the same layer: a superseded child is no breakdown, and ADRs and probes are never children. Each artifact is listed once, in its highest class:
 
 - **Childless product Directions** — no product Epic's or Story's `relates` contains its id.
 - **Unengineered Stories** — no FW Direction's or Task's `relates` contains the Story's id. This is the hand-off frontier.
 - **Open probes** — any `status: open` probe, in either layer. Resuming it ranks above starting new work in the same area.
-- **Childless Directions** — no Epic's `relates` contains this Direction's id.
+- **Childless Directions** — no Epic's or Task's `relates` contains this Direction's id. Epics are optional, so a Direction broken straight into Tasks is not childless.
 - **Childless Epics** — no Task's `relates` contains this Epic's id.
-- **Unplanned Tasks** — no Plan's `relates` contains this Task's id.
+- **Unplanned Tasks** — no live Plan's `relates` contains this Task's id. A Task whose latest `docs/tasks/LEDGER.md` line is `done` is never an orphan.
 - **Unimplemented Plans** — every Plan whose id has no entry in `docs/plans/LEDGER.md`. A Plan with a ledger entry is implemented — no Phase 3 check needed for it.
+
+A superseded artifact is sealed and is never an orphan. A written `status:` on a Direction, Epic, Task or Plan is never state (`conventions` → Status & ledger).
 
 One more class sits **below every frontier class**, because it is guidance, not blocked work:
 
-- **Awaiting an observed effect**: a Task that is implemented, meaning every Plan relating to it has a plan-ledger line, but that has no line in `docs/tasks/LEDGER.md`. Its mechanics were verified, but nobody has yet seen it have its intended effect in use. A Task built without a Plan qualifies on codebase evidence (Phase 3). A Task with a later `effect not achieved` line is not in this class. It is a `bottom-up` trigger, and it ranks with open probes.
+- **Awaiting an observed effect**: a Task that is implemented, meaning it has a Plan and every live Plan relating to it has a plan-ledger line, but that has no line in `docs/tasks/LEDGER.md`. Its mechanics were verified, but nobody has yet seen it have its intended effect in use. A Task built without a Plan qualifies on codebase evidence (Phase 3). A Task with a later `effect not achieved` line is not in this class. It is a `bottom-up` trigger, and it ranks with open probes.
 
 The **frontier** is the shallowest stage that has orphans — that's where the pipeline is blocked and work is most leveraged. Resolve upper stages before lower ones: a Direction with no Epics matters more than a Plan with no code, because nothing downstream can proceed without it.
 
@@ -105,7 +109,7 @@ If the user picks one, invoke the suggested skill with the context already gathe
 
 - The relates graph and the codebase are ground truth.
 - Code can exist ahead of docs — always cross-check candidates against the codebase before recommending, and drop any that are already built.
-- Phase 1–2 are frontmatter-only (`sp tree`, `sp check`, or grep). No body reads until Phase 3; then `sp show <id> Goal` rather than the whole file.
+- Phase 1–2 are frontmatter-only: `sp frontier` and `sp check --all`, or grep cold. No body reads until Phase 3; then `sp show <id> Goal` rather than the whole file.
 - Phase 3 inspects at most ~3 candidates; body reads stay O(few), independent of project size.
 - Resolve shallower frontier stages before deeper ones — unblock the pipeline top-down.
 - Recommend three ranked actions; recommend fewer only if fewer real gaps exist — never pad.

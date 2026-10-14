@@ -822,7 +822,7 @@ help_tests() {
 		[ "$st" = 0 ] && ok "$mode 37c sp ${a:-(bare)}: exit 0" || no "$mode 37c sp ${a:-(bare)}: exit 0" "exit $st"
 		contract "$mode 37d contract: sp ${a:-(bare)}" "$out"
 	done
-	for c in def docs module file unresolved trace check tree outline show log new supersede relate ledger migrate; do
+	for c in def docs module file unresolved trace check tree frontier outline show log new supersede relate ledger migrate; do
 		for h in help --help; do
 			out=$(cd "$H" && "$SP" "$c" "$h" 2>&1); st=$?
 			has "$mode 37e $c $h: its own page" "$(printf '%s\n' "$out" | sed -n 1p)" "^sp $c — "
@@ -932,6 +932,106 @@ log_tests() {
 	out=$(cd "$H" && "$SP" log 2>&1); st=$?
 	has "log 38z unset: sp log says so" "$out" 'SP_LOG is unset'
 	[ "$st" = 2 ] && ok "log 38z2 ... and exits 2" || no "log 38z2 ... and exits 2" "exit $st"
+}
+
+# 39. frontier (task-031): one artifact per what-next class, each non-class
+# neighbour beside it, on its own fixture, so the rows are exact.
+FR=$TMP/front
+fm() { # fm <path> <id> <relates> [extra frontmatter line]
+	mkfile "$FR/$1" <<EOF
+---
+id: $2
+title: "$2 title"
+created: 2026-10-13
+relates: [$3]
+${4:-}
+---
+
+# $2
+EOF
+}
+build_front() {
+	rm -rf "$FR"
+	mkdir -p "$FR"
+	git -C "$FR" init -q
+	fm docs/product/directions/001-pd.md product-direction-001 ""
+	fm docs/product/directions/002-pd.md product-direction-002 ""
+	fm docs/product/stories/001-s.md story-001 "product-direction-002"
+	fm docs/product/stories/002-s.md story-002 "product-direction-002"
+	fm docs/product/probes/probe-p.md probe-p "story-002" "status: open"
+	fm docs/directions/001-d.md direction-001 "" "intent: Direction one is for the fixture."
+	fm docs/directions/002-d.md direction-002 "story-002"
+	fm docs/directions/003-d.md direction-003 ""
+	fm docs/directions/004-old.md direction-004 "" "superseded-by: [direction-005]"
+	fm docs/directions/005-new.md direction-005 "" "supersedes: [direction-004]"
+	fm docs/epics/001-e.md epic-001 "direction-002"
+	fm docs/epics/002-e.md epic-002 "direction-002"
+	fm docs/tasks/001-t.md task-001 "epic-002" "status: done"
+	fm docs/tasks/002-t.md task-002 "epic-002"
+	fm docs/tasks/003-t.md task-003 "epic-002"
+	fm docs/tasks/004-t.md task-004 "epic-002"
+	fm docs/tasks/005-t.md task-005 "direction-003"
+	fm docs/tasks/006-t.md task-006 "direction-005"
+	fm docs/plans/001-p.md plan-001 "task-002"
+	fm docs/plans/002-p.md plan-002 "task-003"
+	fm docs/plans/003-p.md plan-003 "task-005" "status: implemented"
+	fm docs/probes/probe-a.md probe-a "task-005" "status: open"
+	fm docs/probes/probe-b.md probe-b "task-005" "status: reconciled"
+	printf '%s\n' "- plan-001 — implemented 2026-10-13 — verification: 1/1 passed" \
+		"- docs/plans/002-p.md — implemented 2026-10-13 — verification: 1/1 passed" >"$FR/docs/plans/LEDGER.md"
+	printf '%s\n' "- task-003 — done 2026-10-13 — effect: seen" "- task-004 — done 2026-10-13 — effect: seen" \
+		"- task-004 — effect not achieved 2026-10-14 — not seen after all" "- task-006 — done 2026-10-13 — effect: seen" >"$FR/docs/tasks/LEDGER.md"
+}
+frontier_tests() {
+	build_front
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 39a summary first" "$(printf '%s\n' "$out" | sed -n 2p)" '^frontier  workspace · 9 rows · resume 3 · product 1 · story 1 · direction 1 · epic 1 · task 1 · plan 1 · awaiting an observed effect: 1 Task (--awaiting lists them)$'
+	has "$mode 39b then line second" "$(printf '%s\n' "$out" | sed -n 3p)" '^then      what-next Phase 3'
+	rows=$(printf '%s\n' "$out" | sed 1,3d | awk '{ print $1, $2, $3 }' | tr '\n' '|')
+	want='resume probe-a open|resume probe-p open|resume task-004 effect|product product-direction-001 childless|story story-001 unengineered|direction direction-001 childless|epic epic-001 childless|task task-001 unplanned|plan plan-003 unimplemented|'
+	[ "$rows" = "$want" ] && ok "$mode 39c exactly the class rows, in stage order" || no "$mode 39c exactly the class rows, in stage order" "$out"
+	has "$mode 39d a row carries its skill and intent" "$out" '^direction direction-001  childless → /breakdown · Direction one is for the fixture\.$'
+	has "$mode 39e a missing intent says so" "$out" '^epic      epic-001  childless → /breakdown · no intent line$'
+	has "$mode 39f a probe row adds its title" "$out" 'probe-a  open probe → bottom-up · no intent line (title: probe-a title)$'
+	has "$mode 39g a product probe goes to reflect" "$out" 'probe-p  open probe → reflect'
+	hasnt "$mode 39h a written status: is not state" "$out" 'task-003\|task-006'
+	hasnt "$mode 39i awaiting is a count, not a row" "$out" 'task-002'
+	hasnt "$mode 39j superseded is never on the frontier" "$out" 'direction-004'
+	hasnt "$mode 39k a Direction broken into Tasks is not childless" "$out" 'direction-003\|direction-005'
+	hasnt "$mode 39l a ledgered Plan, by id or path, is not a row" "$out" 'plan-001\|plan-002'
+	contract "$mode 39m contract: frontier" "$out"
+	out=$(cd "$FR" && nav frontier --awaiting)
+	has "$mode 39n --awaiting lists them last" "$(printf '%s\n' "$out" | tail -1)" '^awaiting  task-002  awaiting an observed effect → sp ledger done once seen in use'
+	out=$(cd "$FR" && nav frontier direction-003)
+	has "$mode 39o an id reads its subtree" "$(printf '%s\n' "$out" | sed -n 2p)" '^frontier  direction-003 · 2 rows · resume 1 · plan 1 · awaiting an observed effect: 0 Tasks$'
+	out=$(cd "$FR" && nav frontier epic-002)
+	has "$mode 39p a subtree keeps its awaiting count" "$(printf '%s\n' "$out" | sed -n 2p)" '^frontier  epic-002 · 2 rows · resume 1 · task 1 · awaiting an observed effect: 1 Task (--awaiting lists them)$'
+	# A superseded Plan is no Plan: its Task is unplanned again.
+	fm docs/plans/004-p.md plan-004 "task-005" "superseded-by: [plan-003]"
+	fm docs/tasks/007-t.md task-007 "direction-005"
+	fm docs/plans/005-p.md plan-005 "task-007" "superseded-by: [plan-003]"
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 39q a Task whose only Plan is sealed is unplanned" "$out" '^task      task-007  unplanned'
+	hasnt "$mode 39r a sealed Plan is no row" "$out" 'plan-004\|plan-005'
+	# A broken link makes the rows above it unsure; an ambiguous one marks its candidates.
+	fm docs/tasks/008-t.md task-008 "epic-099"
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 39s a broken link: one unsure line" "$out" '^unsure    1 relates link names no doc here (first: task-008 -> epic-099): an orphan above may be false; sp check --all$'
+	fm docs/tasks/008-t.md task-008 "001"
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 39t an ambiguous link marks its candidates" "$out" '^epic      epic-001  childless → /breakdown · no intent line · unsure: an ambiguous link may name it (sp check --all)$'
+	fm docs/tasks/008-t.md task-008 "repo:direction-001"
+	out=$(cd "$FR" && nav frontier)
+	hasnt "$mode 39u another workspace is no broken link" "$out" '^unsure'
+	out=$(cd "$FR" && nav frontier task-007 task-008)
+	has "$mode 39v frontier takes one id" "$out" 'frontier takes one argument'
+	out=$(cd "$FR" && nav tree task-007 --awaiting)
+	has "$mode 39w --awaiting is for frontier only" "$out" '\-\-awaiting is for sp frontier'
+	E=$TMP/empty
+	rm -rf "$E"; mkdir -p "$E"; git -C "$E" init -q
+	out=$(cd "$E" && nav frontier)
+	has "$mode 39x an empty workspace: 0 rows" "$out" '^frontier  workspace · 0 rows · awaiting an observed effect: 0 Tasks$'
+	has "$mode 39y and what to do" "$out" '^then      no Directions here: /shape'
 }
 
 run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
@@ -1385,6 +1485,37 @@ EOF
 	out=$(cd "$R" && nav relate task-040 --to nothing-1)
 	has "$mode 33e a broken edge refuses" "$out" 'names no doc'
 
+	# A link into another workspace (repo:id, or a path from the shared folder)
+	# is written as given once its target is found there, as check reads it.
+	S=$TMP/side
+	rm -rf "$S"
+	mkdir -p "$S/docs/epics"
+	git -C "$S" init -q
+	printf -- '---\nid: epic-001\ntitle: "S"\ncreated: 2026-10-13\nrelates: []\n---\n\n# Epic 001: S\n' >"$S/docs/epics/001-s.md"
+	out=$(cd "$R" && nav new task "Cross id" --relates side:epic-001)
+	has "$mode 33f new takes repo:id" "$out" '^new       task-'
+	f=$(printf '%s\n' "$out" | awk '$1 == "new" { print $3 }')
+	has "$mode 33g written as given" "$(cat "$R/$f")" '^  - side:epic-001$'
+	has "$mode 33h and check reads it as another workspace" "$(cd "$R" && nav check "$f")" '0 breaking'
+	rm -f "$R/$f"
+	out=$(cd "$R" && nav new task "Cross path" --relates ../side/docs/epics/001-s.md)
+	f=$(printf '%s\n' "$out" | awk '$1 == "new" { print $3 }')
+	has "$mode 33i new takes a path, ../ dropped" "$(cat "$R/$f" 2>&1)" '^  - side/docs/epics/001-s.md$'
+	rm -f "$R/$f"
+	out=$(cd "$R" && nav new task "Cross miss" --relates side:epic-009)
+	has "$mode 33j a missing id there refuses, saying where" "$out" 'side:epic-009 names no doc: in side, epic-009 names no doc'
+	out=$(cd "$R" && nav new task "Cross nowhere" --relates nowhere:epic-001)
+	has "$mode 33k a missing workspace refuses" "$out" 'no workspace nowhere with a docs/'
+	out=$(cd "$R" && nav new task "Cross abs" --relates "$S/docs/epics/001-s.md")
+	has "$mode 33l an absolute path refuses with the form to use" "$out" 'is an absolute path: name a doc in another workspace'
+	hasnt "$mode 33m nothing was written on a refusal" "$(ls "$R/docs/tasks")" 'cross-[man]'
+	cp "$R/docs/tasks/040-clean.md" "$TMP/t0"
+	out=$(cd "$R" && nav relate task-040 --to side:epic-001)
+	has "$mode 33n relate takes repo:id" "$out" 'relates += side:epic-001 (changed)'
+	cp "$TMP/t0" "$R/docs/tasks/040-clean.md"
+	out=$(cd "$R" && nav show side:epic-001 Goal)
+	has "$mode 33o a read says where to read it" "$out" 'it is in another workspace: read it there'
+
 	# ledger: the line in ADR 0004 format; status only on a probe close.
 	cp "$R/docs/tasks/040-clean.md" "$TMP/t1"
 	out=$(cd "$R" && nav ledger done task-040 "seen in use at the fixture")
@@ -1428,6 +1559,7 @@ EOF
 	has "$mode 34k nav refuses write verbs" "$out" 'run sp ledger'
 	contract "$mode 34l contract: new" "$(cd "$R" && nav new task "Contract")"
 	migrate_tests
+	frontier_tests
 	help_tests
 	unset SP_TODAY
 }

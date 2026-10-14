@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `sp frontier [<id>] [--awaiting]` lists the not-done work in one call (direction-006).
+  - One row per orphan in `what-next`'s classes: open probes and `effect not achieved` Tasks first, then childless product Directions, unengineered Stories, childless Directions and Epics, unplanned Tasks, unimplemented Plans. Each row has its stage, id, the skill that closes it and its `intent:` line. Tasks awaiting an observed effect are a count; `--awaiting` lists them. A broken link adds an `unsure` line; an ambiguous one marks the rows it may name. With an id, only that subtree.
+  - State comes from the ledgers, probe status and both supersession edges, never a written `status:`. `tree` and `frontier` now share one graph builder; `tree`'s output is unchanged.
+  - `what-next` Phases 1–2 are `sp frontier` and `sp check --all`, not one `sp tree` per Direction; its grep method stays as the cold path. A Direction broken straight into Tasks is no longer childless, and a superseded Plan no longer plans its Task.
+
 - `sp` logs its own calls, so a session can find its defects from evidence (Direction 005).
   - With `SP_LOG` set to an absolute path, every `sp` call appends one JSON line: time, duration, exit code, the workspace it resolved, cwd, argv, role, the harness session id when there is one, a checksum of `sp`, the answer's first line, whether it was cut, `ambiguous`/`broken` marks, and stderr; `SP_LOG_LEVEL=full` adds the answer. Every call is logged, usage errors and the `nav` alias included. `sp` runs itself as a child to do it, so the answer is unchanged; a log it cannot write costs one stderr line. Unset, nothing is written.
   - `sp log [<count>] [--all]` lists the failed calls, then the flagged ones, identical calls folded, each with a one-line rerun command. It reads the log from anywhere, with no workspace.
@@ -83,6 +88,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `sp new --relates` and `sp relate --to` accept a link into another workspace, which `sp check` and `sp trace` already accept. The link can be `repo:id`, or a path from the folder the workspaces share, with a leading `../` dropped. It is checked there first: the workspace must have a `docs/`, the id must resolve in it (or the file must exist), and it is then written as given. An absolute path is refused, with the form to use. Before, every form failed with `names no doc`, so the link had to be typed into the frontmatter by hand. A read of `repo:id` now says to read it in that workspace, instead of suggesting a path. Found from the `sp log`.
 - `sp tree`: a Plan that relates to several Tasks counts toward each of them. Before, only the last Task in its `relates` was credited, so another Task under it read `0/1 plans implemented` while its Plan was listed as `[implemented]`. ADR 0004 counts every Plan relating to a Task. Found from the `sp log`.
 - `sp trace`: a link into another workspace (`repo:id`, or a path outside `docs/`) is reported as `another workspace: … (not followed)`, as `sp check` says it, instead of `broken link`. A probe or ADR in another workspace is passed over like a local one. Found from the `sp log`.
 - `sp trace`: a quoted `id:`, `title:` or `intent:` is shown unquoted, as the index reads it. Before, `id: "007"` was shown as `"007"`, and the quotes were copied into the next call (`sp tree '"021"'`). Found from the `sp log`.

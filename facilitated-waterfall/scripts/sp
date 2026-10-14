@@ -146,6 +146,8 @@ Read (also through the nav alias):
   trace <id>                         intent trace up `relates`
   check [<id>] [--all]               what breaks navigation, and drift
   tree <id>                          descendants with their state, next free numbers
+  frontier [<id>] [--awaiting]       the not-done work, resume work and shallowest
+                                     stage first, each with the skill that closes it
   outline <id>                       frontmatter, headings and item ids, with lines
   show <id> <heading|item>..         exactly those sections or items, with lines
   log [<count>] [--all]              sp's own call log, failures first (SP_LOG)
@@ -260,6 +262,23 @@ reads     frontmatter and docs/*/LEDGER.md
 writes    nothing but sp's state
 example   sp tree direction-004
 then      sp show <id> <section> on the descendant you need; sp new for the next one
+EOF
+	;;
+	frontier) cat <<'EOF'
+sp frontier — the not-done work, in what-next's classes, shallowest stage first
+usage     sp frontier [<id|path>] [--awaiting]
+          resume rows first (open probes, effect not achieved), then childless
+          product Directions, unengineered Stories, childless Directions and
+          Epics, unplanned Tasks, unimplemented Plans; one row per artifact, with
+          its stage, the skill that closes it and its intent line. Tasks awaiting
+          an observed effect are a count; --awaiting lists them. With an id, only
+          that artifact and what sp tree lists under it.
+reads     frontmatter and docs/*/LEDGER.md; a written status: counts only on a probe
+writes    nothing but sp's state
+example   sp frontier
+example   sp frontier direction-006 --awaiting
+then      check the first rows against the code (sp show <id> Goal), then the
+          skill the row names; sp check --all when an unsure line shows
 EOF
 	;;
 	outline) cat <<'EOF'
@@ -430,7 +449,7 @@ if [ "$Q" = help ]; then
 	exit 0
 fi
 case $Q in
-def | docs | module | file | trace | unresolved | check | tree | outline | show | log | new | supersede | relate | ledger | migrate)
+def | docs | module | file | trace | unresolved | check | tree | frontier | outline | show | log | new | supersede | relate | ledger | migrate)
 	case ${1:-} in help | --help | -h) cmd_help "$Q"; exit 0 ;; esac
 	for a in "$@"; do case $a in help | --help | -h) cmd_help "$Q"; exit 0 ;; esac; done
 	;;
@@ -442,13 +461,14 @@ new | supersede | relate | ledger | migrate)
 	;;
 esac
 SELS=
-TYPES= SEALED=0 UNLINKED=0 KIND= ARG= ALL=0 ARG2= ARG3= RELATES= INTENT= OF= TO= NP=0 APPLY=0 SETTLE=
+TYPES= SEALED=0 UNLINKED=0 KIND= ARG= ALL=0 AWAITING=0 ARG2= ARG3= RELATES= INTENT= OF= TO= NP=0 APPLY=0 SETTLE=
 while [ $# -gt 0 ]; do
 	case $1 in
 	--type) [ $# -ge 2 ] || die "--type needs a value"; TYPES=$2; shift 2 ;;
 	--sealed) SEALED=1; shift ;;
 	--unlinked) UNLINKED=1; shift ;;
 	--all) ALL=1; shift ;;
+	--awaiting) [ "$Q" = frontier ] || die "--awaiting is for sp frontier"; AWAITING=1; shift ;;
 	--apply) [ "$Q" = migrate ] || die "--apply is for sp migrate"; APPLY=1; shift ;;
 	--settle)
 		[ "$Q" = migrate ] || die "--settle is for sp migrate"
@@ -477,7 +497,7 @@ def | docs | module | file | trace | tree | outline | show) [ -n "$ARG" ] || die
 esac
 SEL=
 case $Q in
-def | docs | module | file | trace | check | unresolved | tree | outline | log) [ "$NP" -le 1 ] || die "$Q takes one argument" ;;
+def | docs | module | file | trace | check | unresolved | tree | frontier | outline | log) [ "$NP" -le 1 ] || die "$Q takes one argument" ;;
 migrate) [ "$NP" = 0 ] || die "migrate takes no argument: sp migrate [--apply] [--settle <file>]" ;;
 show) [ -n "$ARG2" ] || die "show needs a doc and a section: sp show adr-0005 Decision (sp outline lists them)" ;;
 new) [ -n "$ARG2" ] || die 'new needs a kind and a title: sp new task "<title>"' ;;
@@ -635,7 +655,7 @@ BASE=$(cd "$BASE" && pwd -P)
 
 TARGET=
 case $Q in
-module | file | trace | check | tree | outline | show) TARGET=$ARG ;;
+module | file | trace | check | tree | frontier | outline | show) TARGET=$ARG ;;
 docs) case $ARG in */*) TARGET=$ARG ;; esac ;;
 esac
 
@@ -834,6 +854,7 @@ function rs_clear() { RS_C = 0; RS_LIST = ""; RS_LAST = ""; split("", RS_SEEN) }
 function rs_miss(ref,  r, k, i, hi, best) {
 	r = ref; sub(/#.*$/, "", r); gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", r)
 	if (r ~ /\// || r ~ /\.md$/) return "no doc at that path"
+	if (r ~ /^[A-Za-z0-9_.-]+:[^\/]/) return "it is in another workspace: read it there (sp -C <workspace> show " substr(r, index(r, ":") + 1) ")"
 	if (r !~ /^(product-direction|product-epic|direction|epic|task|plan|adr|story)-[0-9]+$/)
 		return "name it by kind-prefixed id (task-084, adr-0034) or path"
 	k = r; sub(/-[0-9]+$/, "", k); hi = -1
@@ -1307,7 +1328,7 @@ LAYER="$MODE · awk"
 [ "$Q" != check ] || [ -z "$YQ" ] || LAYER="$LAYER · yq"
 case $Q in
 new | supersede | relate | ledger) LAYER="awk${YQ:+ · yq}" ;;
-outline | tree) LAYER=awk ;;
+outline | tree | frontier) LAYER=awk ;;
 show) LAYER="awk${MDQ:+ · mdq}"; [ -n "$MDQ" ] || LAYER="awk (reduced: no mdq, headings by awk)" ;;
 esac
 
@@ -1872,15 +1893,65 @@ q_show() {
 	cat "$T/show"
 }
 
+# The relates graph and its state, which tree and frontier both read (Task
+# 031). ledgers: the four ledgers, one "ledger<TAB>line" per line. graph_load()
+# fills, per doc path: TI title; IN intent (absent: no intent line); CH
+# children (an upward relates read downward; a same-tier or downward one is no
+# child); NPL Plans per Task, PL each (Plan, Task) once; BY superseded by, from
+# both edges; LED the latest ledger state, PI Plans implemented, NPI implemented
+# Plans per Task; NX and W the highest number per kind; SZ sizes. A relates item
+# that names no doc here (another workspace aside) counts in UN[path], its
+# first in UNF[path]; each candidate of an ambiguous one is in AMB.
+ledgers() {
+	for l in docs/plans/LEDGER.md docs/tasks/LEDGER.md docs/probes/LEDGER.md docs/product/probes/LEDGER.md; do
+		[ -f "$l" ] && awk -v l="$l" '{ print l "\t" $0 }' "$l"
+	done >"$T/ledgers" || :
+}
+AWK_GRAPH='
+function graph_load(idsf, ledf, sizesf,  i, p, k, t, j, q, v, n, c, x, l, a, w, pq) {
+	rs_load(idsf)
+	while ((getline l < sizesf) > 0) { split(l, a, "\t"); SZ[a[1]] = a[2] }
+	for (i = 1; i <= rs_n; i++) {
+		p = R_P[i]; k = R_K[i]
+		if (k == "doc" || R_S[i] == "LEDGER") continue
+		if (!fm_read(p)) continue
+		t = FMS["title"]; gsub(/^"|"$/, "", t); TI[p] = t
+		t = FMS["intent"]; gsub(/^"|"$/, "", t); if (t != "") IN[p] = t
+		for (j = 1; j <= FMC["relates"]; j++) {
+			v = FM["relates", j]; q = rs(v, p)
+			if (q == "" && !(v ~ /\// && v !~ /^(\.\/)?docs\// || v ~ /^[A-Za-z0-9_.-]+:[^\/]/)) {
+				if (!UN[p]++) UNF[p] = canon(p) " -> " v
+				if (RS_C > 1) { n = split(RS_LIST, c, " "); for (x = 1; x <= n; x++) AMB[c[x]] = 1 }
+			}
+			if (q == "" || q == p) continue
+			if (k != "adr" && k != "probe" && tier(k) >= tier(R_KP[q])) continue
+			CH[q] = CH[q] " " p
+			# A Plan may serve several Tasks: it counts for each, once.
+			if (k == "plan" && R_KP[q] == "task" && !((p, q) in PL)) { NPL[q]++; PL[p, q] = 1 }
+		}
+		# Both edges of one supersession name its successor once.
+		for (j = 1; j <= FMC["superseded-by"]; j++) { q = rs(FM["superseded-by", j], p, 1); if (q != "" && !((p, q) in BYS)) { BYS[p, q] = 1; BY[p] = (p in BY ? BY[p] ", " : "") canon(q) } }
+		for (j = 1; j <= FMC["supersedes"]; j++) { q = rs(FM["supersedes", j], p, 1); if (q != "" && !((q, p) in BYS)) { BYS[q, p] = 1; BY[q] = (q in BY ? BY[q] ", " : "") canon(p) } }
+		if (R_N[i] != "" && R_N[i] + 0 > NX[k]) { NX[k] = R_N[i] + 0; W[k] = length(R_N[i]) }
+	}
+	# Ledger lines, the later winning (ADR 0004).
+	while ((getline l < ledf) > 0) {
+		split(l, a, "\t"); x = a[2]; sub(/^[ \t]*[-*][ \t]+/, "", x); split(x, w, " "); q = rs(w[1], "")
+		if (q == "") continue
+		if (match(x, / — (implemented|done|effect not achieved|reconciled|resolved) [0-9-]+/)) LED[q] = substr(x, RSTART + 5, RLENGTH - 5)
+		if (x ~ / — implemented /) PI[q] = 1
+	}
+	for (pq in PL) { split(pq, a, SUBSEP); if (a[1] in PI) NPI[a[2]]++ }
+}
+'
+
 # tree: everything that relates up to the doc, level by level, each with its
 # state from the ledgers and both supersession edges; then the next free number
 # of each kind. A same-tier or downward relates is not a child.
 q_tree() {
 	f=$(doc_of "$ARG")
-	for l in docs/plans/LEDGER.md docs/tasks/LEDGER.md docs/probes/LEDGER.md docs/product/probes/LEDGER.md; do
-		[ -f "$l" ] && awk -v l="$l" '{ print l "\t" $0 }' "$l"
-	done >"$T/ledgers" || :
-	awk -F'\t' -v root="$f" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE"'
+	ledgers
+	awk -F'\t' -v root="$f" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE$AWK_GRAPH"'
 	function tok(b) { return int(b / 4 + 0.5) }
 	function state(p,  k, st, s) {
 		k = R_KP[p]; s = ""
@@ -1906,33 +1977,7 @@ q_tree() {
 	}
 	function out(l) { O[++no] = l }
 	BEGIN {
-		rs_load(idsf)
-		while ((getline l < sizesf) > 0) { split(l, a, "\t"); SZ[a[1]] = a[2] }
-		for (i = 1; i <= rs_n; i++) {
-			p = R_P[i]; k = R_K[i]
-			if (k == "doc" || R_S[i] == "LEDGER") continue
-			if (!fm_read(p)) continue
-			t = FMS["title"]; gsub(/^"|"$/, "", t); TI[p] = t
-			for (j = 1; j <= FMC["relates"]; j++) {
-				q = rs(FM["relates", j], p); if (q == "" || q == p) continue
-				if (k != "adr" && k != "probe" && tier(k) >= tier(R_KP[q])) continue
-				CH[q] = CH[q] " " p
-				# A Plan may serve several Tasks: it counts for each, once.
-				if (k == "plan" && R_KP[q] == "task" && !((p, q) in PL)) { NPL[q]++; PL[p, q] = 1 }
-			}
-			# Both edges of one supersession name its successor once.
-			for (j = 1; j <= FMC["superseded-by"]; j++) { q = rs(FM["superseded-by", j], p, 1); if (q != "" && !((p, q) in BYS)) { BYS[p, q] = 1; BY[p] = (p in BY ? BY[p] ", " : "") canon(q) } }
-			for (j = 1; j <= FMC["supersedes"]; j++) { q = rs(FM["supersedes", j], p, 1); if (q != "" && !((q, p) in BYS)) { BYS[q, p] = 1; BY[q] = (q in BY ? BY[q] ", " : "") canon(p) } }
-			if (R_N[i] != "" && R_N[i] + 0 > NX[k]) { NX[k] = R_N[i] + 0; W[k] = length(R_N[i]) }
-		}
-		# Ledger lines, the later winning (ADR 0004).
-		while ((getline l < ledf) > 0) {
-			split(l, a, "\t"); x = a[2]; sub(/^[ \t]*[-*][ \t]+/, "", x); split(x, w, " "); q = rs(w[1], "")
-			if (q == "") continue
-			if (match(x, / — (implemented|done|effect not achieved|reconciled|resolved) [0-9-]+/)) LED[q] = substr(x, RSTART + 5, RLENGTH - 5)
-			if (x ~ / — implemented /) PI[q] = 1
-		}
-		for (pq in PL) { split(pq, a, SUBSEP); if (a[1] in PI) NPI[a[2]]++ }
+		graph_load(idsf, ledf, sizesf)
 		SEEN[root] = 1
 		walk(root, 1)
 		printf "tree      %s  %s  · %d descendants%s\n", canon(root), root, nd, (state(root) != "" ? "  [" state(root) "]" : "")
@@ -1944,6 +1989,86 @@ q_tree() {
 		print "next      " (nx != "" ? nx : "none numbered yet")
 		for (i = 1; i <= no; i++) print O[i]
 	}' </dev/null
+}
+
+# frontier (Task 031): the not-done work in what-next Phase 2 classes, one row
+# per live artifact in its highest class. Resume work first (open probes, then
+# Tasks whose latest task-ledger line is effect not achieved), then the stages,
+# shallowest first. Tasks awaiting an observed effect are a count, listed with
+# --awaiting. State comes only from the ledgers, probe status and both
+# supersession edges (adr-0004): a written status: on any other kind is never
+# read. With an id, only that artifact and what tree lists under it.
+q_frontier() {
+	f=
+	[ -z "$ARG" ] || f=$(doc_of "$ARG")
+	ledgers
+	: >"$T/frows"
+	awk -F'\t' -v root="$f" -v aw="$AWAITING" -v rowsf="$T/frows" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE$AWK_GRAPH"'
+	# The live children of p of the kinds in ks: a sealed child is no breakdown,
+	# and ADRs and probes are working memory, not structure.
+	function kids(p, ks,  n, a, i, m) {
+		n = split(CH[p], a, " "); m = 0
+		for (i = 1; i <= n; i++) if (!(a[i] in BY) && index(" " ks " ", " " R_KP[a[i]] " ")) m++
+		return m
+	}
+	# The live Plans of Task p that have a plan-ledger line.
+	function planned(p,  n, a, i, m) {
+		n = split(CH[p], a, " "); m = 0
+		for (i = 1; i <= n; i++) if (R_KP[a[i]] == "plan" && !(a[i] in BY) && (a[i] in PI)) m++
+		return m
+	}
+	function walk(p, d,  i, n, a, c) {
+		n = split(CH[p], a, " ")
+		for (i = 1; i <= n; i++) {
+			c = a[i]; if (c in SUB) continue; SUB[c] = 1
+			if (d < 6 && R_KP[c] != "adr" && R_KP[c] != "probe") walk(c, d + 1)
+		}
+	}
+	# A row names a doc as sp resolves it: a file with no number (plans/x.md
+	# with id: plan-118) by its own id, else its path; never plan-NNN.
+	function cid(p,  c) { c = canon(p); if (c ~ /-N+$/) c = R_I[X_PI[p]] ~ /^[a-z-]+-[0-9]+$/ ? R_I[X_PI[p]] : p; return c }
+	function row(r, stage, p, cls, skill,  t) {
+		t = (p in IN) ? IN[p] : "no intent line" (R_KP[p] == "probe" ? " (title: " TI[p] ")" : "")
+		if (p in AMB) t = t " · unsure: an ambiguous link may name it (sp check --all)"
+		if (r < 9 || aw) printf "%d\t%s\t%-9s %s  %s → %s · %s\n", r, cid(p), stage, cid(p), cls, skill, t > rowsf
+		N[r]++
+	}
+	BEGIN {
+		graph_load(idsf, ledf, sizesf)
+		if (root != "") { SUB[root] = 1; walk(root, 1) }
+		for (i = 1; i <= rs_n; i++) {
+			p = R_P[i]; k = R_K[i]
+			if (!(p in TI) || (p in BY) || (root != "" && !(p in SUB))) continue
+			if (k == "direction" || k == "product-direction") nd++
+			if (UN[p]) { un += UN[p]; if (unf == "") unf = UNF[p] }
+			st = R_ST[p]; gsub(/["\047]/, "", st)
+			# Test LED[p] only behind (p in LED): a lookup alone would create it.
+			led = (p in LED) ? LED[p] : ""
+			if (k == "probe") { if (st == "open") row(1, "resume", p, "open probe", p ~ /^docs\/product\// ? "reflect" : "bottom-up") }
+			else if (k == "task" && led ~ /^done /) continue
+			else if (k == "task" && led ~ /^effect not achieved /) row(2, "resume", p, "effect not achieved", "bottom-up, this ledger line as Trigger")
+			else if (k == "product-direction") { if (!kids(p, "product-epic story")) row(3, "product", p, "childless", "direct Breakdown") }
+			else if (k == "story") { if (!kids(p, "direction task")) row(4, "story", p, "unengineered", "top-down") }
+			else if (k == "direction") { if (!kids(p, "epic task")) row(5, "direction", p, "childless", "/breakdown") }
+			else if (k == "epic") { if (!kids(p, "task")) row(6, "epic", p, "childless", "/breakdown") }
+			else if (k == "task") {
+				n = kids(p, "plan")
+				if (!n) row(7, "task", p, "unplanned", "/plan")
+				else if (planned(p) == n && led == "") row(9, "awaiting", p, "awaiting an observed effect", "sp ledger done once seen in use")
+			}
+			else if (k == "plan") { if (!(p in PI)) row(8, "plan", p, "unimplemented", "/implement") }
+		}
+		split("resume resume product story direction epic task plan", L, " ")
+		s = ""; tot = 0
+		for (r = 1; r <= 8; r++) if (N[r]) { tot += N[r]; S[L[r]] += N[r]; if (!(L[r] in SO)) { SO[L[r]] = 1; O[++no] = L[r] } }
+		for (i = 1; i <= no; i++) s = s " · " O[i] " " S[O[i]]
+		printf "frontier  %s · %d %s%s · awaiting an observed effect: %d Task%s%s\n", (root != "" ? canon(root) : "workspace"), tot, (tot == 1 ? "row" : "rows"), s, N[9], (N[9] == 1 ? "" : "s"), (N[9] && !aw ? " (--awaiting lists them)" : "")
+		if (un) printf "unsure    %d relates link%s name%s no doc here (first: %s): an orphan above may be false; sp check --all\n", un, (un == 1 ? "" : "s"), (un == 1 ? "s" : ""), unf
+		if (tot) print "then      what-next Phase 3: check the first rows against the code (sp show <id> Goal) before recommending"
+		else if (root == "" && !nd) print "then      no Directions here: /shape, or direct for a product Direction"
+		else print "then      nothing on the frontier: what-next Phase 4 (an observed effect, or a new Direction)"
+	}' </dev/null
+	sort -t '	' -k1,1n -k2,2 "$T/frows" | cut -f3-
 }
 
 # The one frontmatter writer (Task 024). Input: one doc. -v op=add puts val in
@@ -2037,6 +2162,42 @@ resolve_one() {
 	}'
 }
 
+# resolve_up <ref> <from>: resolve_one for an upward link, which may also name a
+# doc in another workspace (conventions: `repo:id`, or a path outside docs/; the
+# test check and trace use). Such a link is checked against the folder the
+# workspaces share and printed as written, with an empty path; it is not
+# followed, so it gets no downward check.
+resolve_up() {
+	if resolve_one "$1" "$2" up 2>"$T/rerr"; then return 0; fi
+	case $1 in
+	docs/* | ./docs/*) ;;
+	*/* | [A-Za-z0-9_.-]*:[!/]*)
+		o=$(other_ws "$1") || exit 2
+		printf '\t%s\n' "$o"
+		return 0
+		;;
+	esac
+	cat "$T/rerr" >&2
+	exit 2
+}
+other_ws() {
+	r=$1 par=$(dirname "$ROOT")
+	case $r in
+	/*) die "$r is an absolute path: name a doc in another workspace from the folder the workspaces share ($par), as <workspace>/docs/…" ;;
+	../*) r=${r#../} ;;
+	esac
+	case $r in
+	*/*) [ -f "$par/$r" ] || die "$r names no doc: no file at $par/$r" ;;
+	*)
+		ws=${r%%:*} id=${r#*:}
+		[ -d "$par/$ws/docs" ] || die "$r names no doc: no workspace $ws with a docs/ in $par"
+		SP_LOG= "$SELF" -C "$par/$ws" outline "$id" >/dev/null 2>"$T/ows" ||
+			die "$r names no doc: in $ws, $(sed -n '1s/^sp: //p' "$T/ows")"
+		;;
+	esac
+	printf '%s\n' "$r"
+}
+
 # Today, or SP_TODAY (fixtures pin it).
 today() { echo "${SP_TODAY:-$(date +%Y-%m-%d)}"; }
 
@@ -2088,7 +2249,7 @@ q_new() {
 			[ -n "$r" ] || continue
 			anchor=
 			case $r in *'#'*) anchor="#${r#*#}" ;; esac
-			x=$(resolve_one "${r%%#*}" "$dir/000-$slug.md" up) || exit 2
+			x=$(resolve_up "${r%%#*}" "$dir/000-$slug.md") || exit 2
 			printf '%s%s\n' "${x#*	}" "$anchor"
 		done >"$T/rel" || exit 2
 	fi
@@ -2147,7 +2308,7 @@ q_supersede() {
 q_relate() {
 	c=$(resolve_one "$ARG") || exit 2
 	cp_=${c%%	*} cid=${c#*	}
-	t=$(resolve_one "$TO" "$cp_" up) || exit 2
+	t=$(resolve_up "$TO" "$cp_") || exit 2
 	tid=${t#*	}
 	[ "$(head -n 1 "$cp_")" = --- ] || die "$cp_ has no frontmatter: add it first (sp check $cp_ says what it needs)"
 	r=$(fm_write "$cp_" add relates "$tid")
@@ -2488,6 +2649,7 @@ set +e
 	trace) q_trace ;;
 	check) q_check ;;
 	tree) q_tree ;;
+	frontier) q_frontier ;;
 	outline) q_outline ;;
 	show) q_show ;;
 	new) q_new ;;
@@ -2505,6 +2667,7 @@ cap=60
 case $Q in
 docs | file | module) hint="narrow with --type, or ask for one doc or symbol" ;;
 tree) hint="sp tree <descendant id> reads one branch; --all prints them all" ;;
+frontier) hint="sp frontier <direction id> reads one Direction; --all prints them all" ;;
 migrate) hint="sp migrate --all prints them all; the whole diff is in $STATE/migrate.diff" ;;
 *) hint="--all prints them all, or ask for one doc or symbol" ;;
 esac
