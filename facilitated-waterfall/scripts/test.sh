@@ -1023,6 +1023,13 @@ frontier_tests() {
 	fm docs/tasks/008-t.md task-008 "repo:direction-001"
 	out=$(cd "$FR" && nav frontier)
 	hasnt "$mode 39u another workspace is no broken link" "$out" '^unsure'
+	# A Direction moved to another workspace is sealed here, by either form, never followed.
+	fm docs/directions/006-moved.md direction-006 "" "superseded-by: [other/docs/directions/005-x.md]"
+	fm docs/directions/007-moved.md direction-007 "" "superseded-by: [\"other:direction-005\"]"
+	out=$(cd "$FR" && nav frontier)
+	hasnt "$mode 39u2 superseded into another workspace is never on the frontier" "$out" 'direction-006\|direction-007'
+	out=$(cd "$FR" && nav tree direction-006)
+	has "$mode 39u3 tree names the successor as written" "$out" 'superseded by other/docs/directions/005-x.md'
 	out=$(cd "$FR" && nav frontier task-007 task-008)
 	has "$mode 39v frontier takes one id" "$out" 'frontier takes one argument'
 	out=$(cd "$FR" && nav tree task-007 --awaiting)

@@ -1929,8 +1929,13 @@ function graph_load(idsf, ledf, sizesf,  i, p, k, t, j, q, v, n, c, x, l, a, w, 
 			# A Plan may serve several Tasks: it counts for each, once.
 			if (k == "plan" && R_KP[q] == "task" && !((p, q) in PL)) { NPL[q]++; PL[p, q] = 1 }
 		}
-		# Both edges of one supersession name its successor once.
-		for (j = 1; j <= FMC["superseded-by"]; j++) { q = rs(FM["superseded-by", j], p, 1); if (q != "" && !((p, q) in BYS)) { BYS[p, q] = 1; BY[p] = (p in BY ? BY[p] ", " : "") canon(q) } }
+		# Both edges of one supersession name its successor once. A successor in
+		# another workspace seals this doc as written; it is not followed (ADR 0005).
+		for (j = 1; j <= FMC["superseded-by"]; j++) {
+			v = FM["superseded-by", j]; q = rs(v, p, 1)
+			if (q == "" && (v ~ /\// && v !~ /^(\.\/)?docs\// || v ~ /^[A-Za-z0-9_.-]+:[^\/]/)) { if (!((p, v) in BYS)) { BYS[p, v] = 1; BY[p] = (p in BY ? BY[p] ", " : "") v }; continue }
+			if (q != "" && !((p, q) in BYS)) { BYS[p, q] = 1; BY[p] = (p in BY ? BY[p] ", " : "") canon(q) }
+		}
 		for (j = 1; j <= FMC["supersedes"]; j++) { q = rs(FM["supersedes", j], p, 1); if (q != "" && !((q, p) in BYS)) { BYS[q, p] = 1; BY[q] = (q in BY ? BY[q] ", " : "") canon(p) } }
 		if (R_N[i] != "" && R_N[i] + 0 > NX[k]) { NX[k] = R_N[i] + 0; W[k] = length(R_N[i]) }
 	}
