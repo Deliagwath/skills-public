@@ -1495,6 +1495,14 @@ EOF
 	[ "$(find "$R/docs" -type f | wc -l)" = "$before" ] && ok "$mode 31q a refusal writes nothing" || no "$mode 31q a refusal writes nothing"
 	out=$(cd "$R" && nav new widget "x")
 	has "$mode 31r an unknown kind lists the kinds" "$out" 'one of direction epic task'
+	# An intent holding ": ", "#" or a quote is written quoted, so the frontmatter parses.
+	out=$(cd "$R" && nav new task "Colon intent" --intent 'Every state written as status: has a "line" # here.')
+	has "$mode 31s a colon in the intent still passes check" "$out" ': 0 breaking · 0 drift'
+	f=$(printf '%s\n' "$out" | awk '$1 == "new" { print $3 }')
+	has "$mode 31t the intent is quoted and escaped" "$(cat "$R/$f")" '^intent: "Every state written as status: has a \\"line\\" # here\."$'
+	id=$(printf '%s\n' "$out" | awk '$1 == "new" { print $2 }')
+	has "$mode 31u trace reads it back whole" "$(cd "$R" && nav trace "$id")" 'Every state written as status: has a'
+	rm -f "$R/$f"
 
 	# supersede: both edges, nothing else on the predecessor, idempotent.
 	body=$(sed '1,/^---$/d' "$R/docs/adr/0023-own2.md" | sed '1,/^---$/d')
@@ -1616,6 +1624,32 @@ else
 fi
 run_mode grep none
 log_tests
+
+# check-graph.py (conventions -> Batch check): links are judged after every id is known.
+check_graph_tests() {
+	CG=$(cd "$(dirname "$0")/../conventions/scripts" && pwd -P)/check-graph.py
+	command -v python3 >/dev/null 2>&1 || { echo "== check-graph skipped (no python3)"; return; }
+	echo "== check-graph"
+	G=$TMP/graph
+	rm -rf "$G"; mkdir -p "$G/docs"
+	gfm() { mkdir -p "$(dirname "$G/$1")"; printf -- '---\nid: %s\ntitle: "x"\nrelates: [%s]\n---\n' "$2" "$3" >"$G/$1"; }
+	gfm docs/directions/002-d.md direction-002 ""
+	gfm docs/tasks/001-t.md task-001 "direction-002, adr-0001"
+	gfm docs/adr/0001-a.md adr-0001 "task-001, probe-2026-10-01-why"
+	gfm docs/probes/probe-2026-10-01-why.md probe-2026-10-01-why "probe-2026-10-02-pm"
+	gfm docs/product/probes/probe-2026-10-02-pm.md probe-2026-10-02-pm ""
+	gfm docs/archive/directions/001-old.md docs/archive/directions/001-old.md "gone-999"
+	out=$(python3 -I "$CG" "$G"); st=$?
+	has "cg1 a forward link to an ADR, a probe or a product probe resolves" "$out" '^OK — 6 artifacts'
+	[ $st = 0 ] && ok "cg2 clean exits 0" || no "cg2 clean exits 0" "$out"
+	hasnt "cg3 an archived doc's own links are not checked" "$out" 'gone-999'
+	gfm docs/tasks/003-t.md task-003 "adr-0009"
+	out=$(python3 -I "$CG" "$G"); st=$?
+	has "cg4 a real broken link is still reported" "$out" '^docs/tasks/003-t.md: adr-0009 — not in this repo$'
+	has "cg5 a real gap is still reported" "$out" '^task: missing numbers \[2\]'
+	[ $st = 1 ] && ok "cg6 breaks exit 1" || no "cg6 breaks exit 1" "$out"
+}
+check_graph_tests
 
 echo "$pass passed, $fails failed"
 [ "$fails" -eq 0 ]

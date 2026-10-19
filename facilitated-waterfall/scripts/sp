@@ -2307,7 +2307,8 @@ q_new() {
 		echo "id: $id"
 		printf 'title: "%s"\n' "$(printf '%s' "$title" | sed 's/\\/\\\\/g; s/"/\\"/g')"
 		echo "created: $day"
-		[ -z "$INTENT" ] || echo "intent: $INTENT"
+		# Quoted like the title: an intent may hold ": " or "#", which YAML reads as structure.
+		[ -z "$INTENT" ] || printf 'intent: "%s"\n' "$(printf '%s' "$INTENT" | sed 's/\\/\\\\/g; s/"/\\"/g')"
 		[ "$ftype" != probe ] || echo "status: open"
 		if [ -s "$T/rel" ]; then echo "relates:"; sed 's/^/  - /' "$T/rel"; else echo "relates: []"; fi
 		echo ---

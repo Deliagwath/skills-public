@@ -42,11 +42,26 @@ def collect(docs):
             if os.path.isdir(d):
                 files += [os.path.join(d, f) for f in sorted(os.listdir(d))
                           if f.endswith(".md") and not f.startswith("LEDGER")]
-    p = os.path.join(docs, "probes")
-    if os.path.isdir(p):
-        files += [os.path.join(p, f) for f in sorted(os.listdir(p))
-                  if f.endswith(".md") and not f.startswith("LEDGER")]
+    for sub in ("probes", os.path.join("product", "probes")):
+        p = os.path.join(docs, sub)
+        if os.path.isdir(p):
+            files += [os.path.join(p, f) for f in sorted(os.listdir(p))
+                      if f.endswith(".md") and not f.startswith("LEDGER")]
     return files
+
+
+def collect_archive(docs):
+    """Archived artifacts: history, as sp reads them. Their ids exist and hold their
+    numbers, but their own links are not checked."""
+    a = os.path.join(docs, "archive")
+    out = []
+    for kinds in (FW_KINDS, PRODUCT_KINDS):
+        for sub in kinds.values():
+            d = os.path.join(a, *sub.split("/"))
+            if os.path.isdir(d):
+                out += [os.path.join(d, f) for f in sorted(os.listdir(d))
+                        if f.endswith(".md") and not f.startswith("LEDGER")]
+    return out
 
 
 def frontmatter(path):
@@ -86,18 +101,30 @@ def main(argv):
 
     root = os.path.dirname(os.path.abspath(docs))
     files = collect(docs)
+    archived = set(collect_archive(docs))
+    files += sorted(archived)
     if not files:
         print(f"no artifacts under {docs}", file=sys.stderr)
         return 2
 
     errors = []
-    ids, seen = set(), {}
+    ids, seen, docs_fm = set(), {}, []
+    # Pass 1: every id. A link may name a doc collected later (a Task names an ADR, an
+    # ADR names a probe), so no link is judged until all ids are known.
     for f in files:
         fm = frontmatter(f)
         if fm is None:
             continue
         rel = os.path.relpath(f, root)
-        aid = fm.get("id")
+        aid = fm.get("id", "").strip().strip("\"'")
+        if f in archived and ("/" in aid or not aid):
+            # sp migrate leaves the archive alone, so a legacy path id is normal there:
+            # name it by its kind directory and file number, as sp resolves a path.
+            sub = os.path.relpath(os.path.dirname(f), os.path.join(docs, "archive"))
+            kind = {v: k for ks in (FW_KINDS, PRODUCT_KINDS) for k, v in ks.items()}.get(sub.replace(os.sep, "/"))
+            num = re.match(r"^(\d+)-", os.path.basename(f))
+            if kind and num:
+                aid = f"{kind}-{num.group(1)}"
         if not aid:
             base = os.path.basename(f)[:-3]
             if os.path.basename(os.path.dirname(f)) == "probes":
@@ -109,7 +136,12 @@ def main(argv):
             errors.append(f"duplicate id {aid}: {seen[aid]} and {rel}")
         ids.add(aid)
         seen[aid] = rel
+        if f not in archived:
+            docs_fm.append((rel, fm))
+    # Pass 2: the links.
+    for rel, fm in docs_fm:
         for tok in refs_of(fm):
+            tok = tok.strip("\"'")
             if ":" in tok:            # repo-qualified: another workspace
                 continue
             if "/" in tok:            # a path link
