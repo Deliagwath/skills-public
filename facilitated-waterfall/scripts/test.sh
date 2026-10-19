@@ -1039,6 +1039,42 @@ frontier_tests() {
 	out=$(cd "$E" && nav frontier)
 	has "$mode 39x an empty workspace: 0 rows" "$out" '^frontier  workspace · 0 rows · awaiting an observed effect: 0 Tasks$'
 	has "$mode 39y and what to do" "$out" '^then      no Directions here: /shape'
+	# adr-0009: a Plan-less build, a deferral and an abandonment are ledger lines.
+	out=$(cd "$FR" && nav ledger implemented task-001 "built in abc1234")
+	has "$mode 40a a Plan-less implemented line" "$(cat "$FR/docs/tasks/LEDGER.md")" '^- task-001 — implemented 2026-10-09 — evidence: built in abc1234$'
+	out=$(cd "$FR" && nav frontier --awaiting)
+	hasnt "$mode 40b it is no longer unplanned" "$out" '^task      task-001'
+	has "$mode 40c it awaits an observed effect" "$out" '^awaiting  task-001  awaiting an observed effect'
+	has "$mode 40d tree shows it" "$(cd "$FR" && nav tree task-001)" '^tree      task-001 .*\[implemented 2026-10-09\]$'
+	out=$(cd "$FR" && nav ledger implemented task-002 "x")
+	has "$mode 40e a Task with a live Plan refuses" "$out" 'task-002 has 1 live Plan(s): record each Plan instead'
+	hasnt "$mode 40f and writes nothing" "$(cat "$FR/docs/tasks/LEDGER.md")" 'task-002 — implemented'
+	out=$(cd "$FR" && nav ledger deferred plan-003 "x")
+	has "$mode 40g deferred takes a direction, epic or task" "$out" 'deferred takes a direction, epic or task, and plan-003 is a plan'
+	out=$(cd "$FR" && nav ledger deferred direction-003 "parked; reopens after the lab")
+	has "$mode 40h a deferred line, in the kind's own ledger" "$(cat "$FR/docs/directions/LEDGER.md")" '^- direction-003 — deferred 2026-10-09 — parked; reopens after the lab$'
+	out=$(cd "$FR" && nav frontier)
+	hasnt "$mode 40i a deferred subtree is off the rows" "$out" 'plan-003'
+	has "$mode 40j and counted on a parked line" "$out" '^parked    deferred 1 · abandoned 0'
+	has "$mode 40k summary still first" "$(printf '%s\n' "$out" | sed -n 2p)" '^frontier  workspace'
+	out=$(cd "$FR" && nav ledger abandoned epic-001 "will not be built")
+	has "$mode 40l an abandoned line" "$(cat "$FR/docs/epics/LEDGER.md")" '^- epic-001 — abandoned 2026-10-09 — will not be built$'
+	out=$(cd "$FR" && nav frontier)
+	hasnt "$mode 40m an abandoned Epic is no childless row" "$out" '^epic      epic-001'
+	has "$mode 40n both counted" "$out" '^parked    deferred 1 · abandoned 1'
+	has "$mode 40o tree shows the state" "$(cd "$FR" && nav tree epic-001)" '^tree      epic-001 .*\[abandoned 2026-10-09\]$'
+	out=$(cd "$FR" && nav ledger reopened direction-003 "the lab is done")
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 40p reopened: the later line wins" "$out" '^plan      plan-003  unimplemented'
+	has "$mode 40q only the abandoned one is parked" "$out" '^parked    deferred 0 · abandoned 1'
+	hasnt "$mode 40r tree shows no reopened state" "$(cd "$FR" && nav tree direction-003 | sed -n 1,2p)" 'reopened'
+	# A probe's own abandoned line parks nothing: a Task relating to it stays.
+	fm docs/probes/probe-z.md probe-z "" "status: abandoned"
+	fm docs/tasks/009-t.md task-009 "probe-z"
+	printf -- '- probe-z — abandoned 2026-10-09 — not worth it\n' >>"$FR/docs/probes/LEDGER.md"
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 40s an abandoned probe parks no Task" "$out" '^task      task-009  unplanned'
+	has "$mode 40t and is not counted" "$out" '^parked    deferred 0 · abandoned 1'
 }
 
 run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>

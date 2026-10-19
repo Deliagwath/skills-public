@@ -156,7 +156,8 @@ Write:
   supersede <new> --of <old>         both edges: supersedes and superseded-by
   relate <id> --to <id>              one upward relates edge
   ledger <verb> <id> "<text>"        a ledger line: implemented, done,
-                                     not-achieved, reconcile
+                                     not-achieved, deferred, abandoned,
+                                     reopened, reconcile
   migrate [--apply] [--settle <f>]   once per repo, on the user's word: ids, links
                                      and edges to the shape sp reads
 An artifact is named by its kind-prefixed id (task-084, adr-0034), its path, or
@@ -256,8 +257,9 @@ EOF
 	tree) cat <<'EOF'
 sp tree — an artifact's descendants down relates, each with its state
 usage     sp tree <id|path>
-          state comes from the ledgers: Plans implemented, probes open or closed,
-          supersession; the next free number of each kind closes the answer
+          state comes from the ledgers: Plans and Plan-less Tasks implemented,
+          done, deferred, abandoned, probes open or closed, supersession; the
+          next free number of each kind closes the answer
 reads     frontmatter and docs/*/LEDGER.md
 writes    nothing but sp's state
 example   sp tree direction-004
@@ -271,7 +273,9 @@ usage     sp frontier [<id|path>] [--awaiting]
           product Directions, unengineered Stories, childless Directions and
           Epics, unplanned Tasks, unimplemented Plans; one row per artifact, with
           its stage, the skill that closes it and its intent line. Tasks awaiting
-          an observed effect are a count; --awaiting lists them. With an id, only
+          an observed effect (a Plan-less one too, by its implemented line) are a
+          count; --awaiting lists them. A deferred or abandoned artifact and its
+          structure are off the rows, counted on a parked line. With an id, only
           that artifact and what sp tree lists under it.
 reads     frontmatter and docs/*/LEDGER.md; a written status: counts only on a probe
 writes    nothing but sp's state
@@ -359,12 +363,19 @@ EOF
 	ledger) cat <<'EOF'
 sp ledger — append one ledger line (adr-0004: done is a line, not a status)
 usage     sp ledger implemented <plan> "<N>/<N> passed"
+          sp ledger implemented <task> "<evidence: commits, probe, paths>"
+                                  a Plan-less Task only (adr-0009)
           sp ledger done <task> "<the effect seen, where>"
           sp ledger not-achieved <task> "<what was seen>"
+          sp ledger deferred <direction|epic|task> "<why; what reopens it>"
+          sp ledger abandoned <direction|epic|task> "<why>"
+          sp ledger reopened <direction|epic|task> "<why>"
           sp ledger reconcile <probe> "<one-line outcome>"
-writes    one line in docs/plans/, docs/tasks/ or docs/probes/LEDGER.md; reconcile
+writes    one line in docs/<kind>s/LEDGER.md (made on first use); reconcile
           also sets the probe's status (a product probe: resolved)
 example   sp ledger implemented plan-005 "7/7 passed"
+example   sp ledger implemented task-219 "built in b2864de, probe-2026-10-18-build-task-219"
+example   sp ledger deferred direction-018 "parked for the Paperclip lab; reopens if it fails"
 example   sp ledger reconcile probe-2026-10-09-login-loop "fixed in the refresher"
 then      nothing to check: the line is the record
 EOF
@@ -1903,7 +1914,7 @@ q_show() {
 # that names no doc here (another workspace aside) counts in UN[path], its
 # first in UNF[path]; each candidate of an ambiguous one is in AMB.
 ledgers() {
-	for l in docs/plans/LEDGER.md docs/tasks/LEDGER.md docs/probes/LEDGER.md docs/product/probes/LEDGER.md; do
+	for l in docs/directions/LEDGER.md docs/epics/LEDGER.md docs/plans/LEDGER.md docs/tasks/LEDGER.md docs/probes/LEDGER.md docs/product/probes/LEDGER.md; do
 		[ -f "$l" ] && awk -v l="$l" '{ print l "\t" $0 }' "$l"
 	done >"$T/ledgers" || :
 }
@@ -1943,7 +1954,7 @@ function graph_load(idsf, ledf, sizesf,  i, p, k, t, j, q, v, n, c, x, l, a, w, 
 	while ((getline l < ledf) > 0) {
 		split(l, a, "\t"); x = a[2]; sub(/^[ \t]*[-*][ \t]+/, "", x); split(x, w, " "); q = rs(w[1], "")
 		if (q == "") continue
-		if (match(x, / — (implemented|done|effect not achieved|reconciled|resolved) [0-9-]+/)) LED[q] = substr(x, RSTART + 5, RLENGTH - 5)
+		if (match(x, / — (implemented|done|effect not achieved|reconciled|resolved|deferred|abandoned|reopened) [0-9-]+/)) LED[q] = substr(x, RSTART + 5, RLENGTH - 5)
 		if (x ~ / — implemented /) PI[q] = 1
 	}
 	for (pq in PL) { split(pq, a, SUBSEP); if (a[1] in PI) NPI[a[2]]++ }
@@ -1960,7 +1971,8 @@ q_tree() {
 	function tok(b) { return int(b / 4 + 0.5) }
 	function state(p,  k, st, s) {
 		k = R_KP[p]; s = ""
-		if (p in LED) s = LED[p]
+		# A reopened artifact shows its derived state, as if never parked (adr-0009).
+		if ((p in LED) && LED[p] !~ /^reopened /) s = LED[p]
 		else if (k == "task" && NPL[p] && NPL[p] == NPI[p]) s = "implemented (" NPI[p] "/" NPL[p] " plans)"
 		else if (k == "task" && NPL[p]) s = NPI[p] + 0 "/" NPL[p] " plans implemented"
 		if (k == "probe" && R_ST[p] != "") s = R_ST[p]
@@ -2029,6 +2041,15 @@ q_frontier() {
 			if (d < 6 && R_KP[c] != "adr" && R_KP[c] != "probe") walk(c, d + 1)
 		}
 	}
+	# A deferred or abandoned artifact parks its structure below it (adr-0009).
+	# ADRs and probes are not parked: an open probe is still resume work.
+	function park(p, d,  i, n, a, c) {
+		n = split(CH[p], a, " ")
+		for (i = 1; i <= n; i++) {
+			c = a[i]; if (c in OFF || R_KP[c] == "adr" || R_KP[c] == "probe") continue; OFF[c] = 1
+			if (d < 6) park(c, d + 1)
+		}
+	}
 	# A row names a doc as sp resolves it: a file with no number (plans/x.md
 	# with id: plan-118) by its own id, else its path; never plan-NNN.
 	function cid(p,  c) { c = canon(p); if (c ~ /-N+$/) c = R_I[X_PI[p]] ~ /^[a-z-]+-[0-9]+$/ ? R_I[X_PI[p]] : p; return c }
@@ -2041,10 +2062,14 @@ q_frontier() {
 	BEGIN {
 		graph_load(idsf, ledf, sizesf)
 		if (root != "") { SUB[root] = 1; walk(root, 1) }
+		# Only a Direction, Epic or Task parks: a probe ledger line also says abandoned.
+		for (p in LED) if (LED[p] ~ /^(deferred|abandoned) / && R_KP[p] ~ /^(direction|epic|task)$/) { PARK[p] = substr(LED[p], 1, index(LED[p], " ") - 1); OFF[p] = 1 }
+		for (p in PARK) park(p, 1)
 		for (i = 1; i <= rs_n; i++) {
 			p = R_P[i]; k = R_K[i]
 			if (!(p in TI) || (p in BY) || (root != "" && !(p in SUB))) continue
 			if (k == "direction" || k == "product-direction") nd++
+			if (p in OFF) { if (p in PARK) NPK[PARK[p]]++; continue }
 			if (UN[p]) { un += UN[p]; if (unf == "") unf = UNF[p] }
 			st = R_ST[p]; gsub(/["\047]/, "", st)
 			# Test LED[p] only behind (p in LED): a lookup alone would create it.
@@ -2058,8 +2083,9 @@ q_frontier() {
 			else if (k == "epic") { if (!kids(p, "task")) row(6, "epic", p, "childless", "/breakdown") }
 			else if (k == "task") {
 				n = kids(p, "plan")
-				if (!n) row(7, "task", p, "unplanned", "/plan")
-				else if (planned(p) == n && led == "") row(9, "awaiting", p, "awaiting an observed effect", "sp ledger done once seen in use")
+				if (!n && led ~ /^implemented /) row(9, "awaiting", p, "awaiting an observed effect", "sp ledger done once seen in use")
+				else if (!n) row(7, "task", p, "unplanned", "/plan")
+				else if (planned(p) == n) row(9, "awaiting", p, "awaiting an observed effect", "sp ledger done once seen in use")
 			}
 			else if (k == "plan") { if (!(p in PI)) row(8, "plan", p, "unimplemented", "/implement") }
 		}
@@ -2068,6 +2094,7 @@ q_frontier() {
 		for (r = 1; r <= 8; r++) if (N[r]) { tot += N[r]; S[L[r]] += N[r]; if (!(L[r] in SO)) { SO[L[r]] = 1; O[++no] = L[r] } }
 		for (i = 1; i <= no; i++) s = s " · " O[i] " " S[O[i]]
 		printf "frontier  %s · %d %s%s · awaiting an observed effect: %d Task%s%s\n", (root != "" ? canon(root) : "workspace"), tot, (tot == 1 ? "row" : "rows"), s, N[9], (N[9] == 1 ? "" : "s"), (N[9] && !aw ? " (--awaiting lists them)" : "")
+		if (NPK["deferred"] || NPK["abandoned"]) printf "parked    deferred %d · abandoned %d, with what they hold, off the rows (adr-0009; sp tree <id> shows them)\n", NPK["deferred"], NPK["abandoned"]
 		if (un) printf "unsure    %d relates link%s name%s no doc here (first: %s): an orphan above may be false; sp check --all\n", un, (un == 1 ? "" : "s"), (un == 1 ? "s" : ""), unf
 		if (tot) print "then      what-next Phase 3: check the first rows against the code (sp show <id> Goal) before recommending"
 		else if (root == "" && !nd) print "then      no Directions here: /shape, or direct for a product Direction"
@@ -2330,9 +2357,28 @@ q_ledger() {
 	k=$(awk -v p="$rp" "$AWK_RESOLVE"'BEGIN { print kindof(p) }')
 	day=$(today)
 	case $verb in
-	implemented) need=plan ledger=docs/plans/LEDGER.md line="- $rid — implemented $day — verification: $text" ;;
+	implemented)
+		if [ "$k" = task ]; then
+			# A Plan-less Task only (adr-0009): a live Plan's own line records it.
+			ledgers
+			n=$(awk -F'\t' -v root="$rp" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE$AWK_GRAPH"'
+				BEGIN { graph_load(idsf, ledf, sizesf); m = split(CH[root], a, " "); for (i = 1; i <= m; i++) if (R_KP[a[i]] == "plan" && !(a[i] in BY)) c++; print c + 0 }' </dev/null)
+			[ "$n" = 0 ] || die "$rid has $n live Plan(s): record each Plan instead (sp ledger implemented <plan> \"N/N passed\")"
+			need=task ledger=docs/tasks/LEDGER.md line="- $rid — implemented $day — evidence: $text"
+		else
+			need=plan ledger=docs/plans/LEDGER.md line="- $rid — implemented $day — verification: $text"
+		fi
+		;;
 	done | effect) need=task ledger=docs/tasks/LEDGER.md line="- $rid — done $day — effect: $text" ;;
 	not-achieved) need=task ledger=docs/tasks/LEDGER.md line="- $rid — effect not achieved $day — $text" ;;
+	deferred | abandoned | reopened)
+		# adr-0009: a Direction, Epic or Task, in its own kind's ledger.
+		case $k in
+		direction | epic | task) need=$k ;;
+		*) die "$verb takes a direction, epic or task, and $rid is a $k" ;;
+		esac
+		ledger=docs/${k}s/LEDGER.md line="- $rid — $verb $day — $text"
+		;;
 	reconcile)
 		need=probe
 		case $rp in
@@ -2340,7 +2386,7 @@ q_ledger() {
 		*) ledger=docs/probes/LEDGER.md line="- $rid — reconciled $day — $text" st=reconciled ;;
 		esac
 		;;
-	*) die "no ledger verb '$verb': implemented <plan>, done <task>, not-achieved <task>, reconcile <probe>" ;;
+	*) die "no ledger verb '$verb': implemented <plan|plan-less task>, done <task>, not-achieved <task>, deferred|abandoned|reopened <direction|epic|task>, reconcile <probe>" ;;
 	esac
 	[ "$k" = "$need" ] || die "$verb takes a $need, and $rid is a $k"
 	mkdir -p "$(dirname "$ledger")"

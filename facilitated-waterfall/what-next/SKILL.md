@@ -52,16 +52,16 @@ These are the classes `sp frontier` lists, in its order; its fixture (`scripts/t
 - **Open probes** — any `status: open` probe, in either layer. Resuming it ranks above starting new work in the same area.
 - **Childless Directions** — no Epic's or Task's `relates` contains this Direction's id. Epics are optional, so a Direction broken straight into Tasks is not childless.
 - **Childless Epics** — no Task's `relates` contains this Epic's id.
-- **Unplanned Tasks** — no live Plan's `relates` contains this Task's id. A Task whose latest `docs/tasks/LEDGER.md` line is `done` is never an orphan.
+- **Unplanned Tasks** — no live Plan's `relates` contains this Task's id. A Task whose latest `docs/tasks/LEDGER.md` line is `done` is never an orphan. Neither is one whose latest line is a Plan-less `implemented` (adr-0009): it is awaiting an observed effect.
 - **Unimplemented Plans** — every Plan whose id has no entry in `docs/plans/LEDGER.md`. A Plan with a ledger entry is implemented — no Phase 3 check needed for it.
 
 Sanity-check the counts before believing them: a stage that comes out almost entirely orphan, or whose orphans contradict the ledger lines you just read (a Task whose Plan is in the plan ledger, still counted "unplanned"), means the extraction or the links failed, not that the project is broken. Re-check 2–3 artifacts' raw frontmatter — inline vs block `relates`, id vs path form — and when the links are genuinely under-maintained, say so in the recommendation; the graph is unreliable there and Phase 3's codebase check decides.
 
-A superseded artifact is sealed and is never an orphan. A written `status:` on a Direction, Epic, Task or Plan is never state (`conventions` → Status & ledger).
+A superseded artifact is sealed and is never an orphan. A Direction, Epic or Task whose latest line in its kind's ledger is `deferred` or `abandoned` is **parked** (adr-0009). It and the structure under it are in no class, and they are counted on one line. A later `reopened` line brings them back. Open probes under a parked artifact remain resume work. A written `status:` on a Direction, Epic, Task or Plan is never state (`conventions` → Status & ledger).
 
 One more class sits **below every frontier class**, because it is guidance, not blocked work:
 
-- **Awaiting an observed effect**: a Task that is implemented, meaning it has a Plan and every live Plan relating to it has a plan-ledger line, but that has no line in `docs/tasks/LEDGER.md`. Its mechanics were verified, but nobody has yet seen it have its intended effect in use. A Task built without a Plan qualifies on codebase evidence (Phase 3). A Task with a later `effect not achieved` line is not in this class. It is a `bottom-up` trigger, and it ranks with open probes.
+- **Awaiting an observed effect**: a Task that is implemented, meaning it has a Plan and every live Plan relating to it has a plan-ledger line, but that has no line in `docs/tasks/LEDGER.md`. Its mechanics were verified, but nobody has yet seen it have its intended effect in use. A Task built without a Plan qualifies by its own `implemented` line in `docs/tasks/LEDGER.md` (adr-0009). If it is built but has no such line, Phase 3's codebase check finds it, and the fix is to record the line. A Task with a later `effect not achieved` line is not in this class. It is a `bottom-up` trigger, and it ranks with open probes.
 
 The **frontier** is the shallowest stage that has orphans — that's where the pipeline is blocked and work is most leveraged. Resolve upper stages before lower ones: a Direction with no Epics matters more than a Plan with no code, because nothing downstream can proceed without it.
 
