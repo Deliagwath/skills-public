@@ -1,9 +1,9 @@
 ---
 name: general-usage-review
-description: Reviews code changes or facilitated-waterfall documents (Direction, Epic, Task, Plan) for correctness, quality, and consistency. When reviewing code, auto-discovers ADRs and plans as anchors. Use when reviewing a diff, branch, PR, or document artifact, or when the user asks for a review, feedback, or assessment of current work.
+description: Reviews code changes or facilitated-waterfall documents (Direction, Epic, Task, Plan, and the system's own SKILL.md files) for correctness, quality, and consistency. When reviewing code, auto-discovers ADRs and plans as anchors. Use when reviewing a diff, branch, PR, or document artifact, when the user asks for a review, feedback, or assessment of current work, or when applying the fixes an approved review led to.
 ---
 
-Review the current work and surface structured findings. Handle both code and documents. One-shot — report findings and stop. Do not fix.
+Review the current work and surface structured findings. Handle both code and documents. One-shot — report findings and stop. Do not fix, with one exception: when the user approves a subset of findings, apply exactly that class in a fix pass per `references/doc-fixes.md`, and nothing more.
 
 ---
 
@@ -62,6 +62,12 @@ Evaluate the artifact against its type:
 
 For any artifact: flag internal contradictions, missing sections, and links that point to non-existent files.
 
+The subject can also be a **system document** — one of the project's own SKILL.md files, the conventions, or the README that defines how the artifacts above are made. For those, three extra rules:
+
+- **Doc-vs-tool** — when the document describes a tool (a script or CLI) and the two disagree, read the tool's source for the disputed behavior before flagging; the tool is what runs, and the user keeps the document as its cache. Name which side you would fix, not just that they disagree.
+- **Copies** — a spec line often lives in several places (sibling skills, the README, the docs). Grep the repo for the exact line before reporting, so each finding enumerates all of its copies.
+- **Twin drift** — disagreement between sibling system documents is a finding tagged as drift: report it, never silently reconcile it. That is the system's standing posture (disagreement is the finding), and the user has accepted drift in the current frontier's orbit (the fw skills + the `sp` script).
+
 ---
 
 ## Phase 4 — Report
@@ -104,7 +110,9 @@ If there are no findings, say so plainly: "No findings. Looks good."
 
 ## Rules
 
-- Do not fix. Surface only.
+- Do not fix unprompted. When the user approves findings, apply exactly the approved class via the fix pass in `references/doc-fixes.md`; never drift into the deferred classes.
+- Before a fix pass applies anything, check the working tree (`git status`, `git diff` on the target files): a parallel session may have already landed the approved fix, uncommitted. If it is present, the pass verifies instead of re-applying, and it never commits the other session's work — see `references/doc-fixes.md`.
+- End every fix-pass report with the classes found but not approved, listed as deferred, so the next session resumes scope without re-deriving it.
 - Do not manufacture findings to appear thorough. If it looks good, say so.
 - Every finding must include a location (file and line, or document section).
 - Bugs and violations must cite the specific anchor or reason they are wrong.

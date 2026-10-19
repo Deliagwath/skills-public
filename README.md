@@ -118,14 +118,14 @@ docs/
   plans/NNN-slug.md        Context · Steps · Verification · Risk
   plans/LEDGER.md          Append-only record of which Plans are implemented
   adr/NNNN-slug.md         Context · Decision · Consequences · Alternatives   (optional supersedes)
-  probes/<id>-slug.md      Trigger · Governing docs · Findings · Open questions · Deliberation · Risk · Reconciliation
+  probes/<id>.md           Trigger · Governing docs · Findings · Open questions · Deliberation · Risk · Reconciliation
   CONTEXT.md               Glossary of resolved engineering terms
   PRODUCT.md               product-waterfall: Identity · Decisions (D-NNN) · Out of scope (X-NNN) · Themes · Product glossary
   product/
     directions/NNN-slug.md Problem · Appetite · Out of scope · Success signal · Constraints
     epics/NNN-slug.md      Capability · Scope · Out of scope · Success signal · Stories · Sequencing   (optional tier)
     stories/NNN-slug.md    Outcome · Acceptance criteria · Out of scope · Revisions?   ← the seam to FW
-    probes/<id>-slug.md    Signal · Classification · Governing decisions · Deliberation · Outcome · Affected · Changes
+    probes/<id>.md         Signal · Classification · Governing decisions · Deliberation · Outcome · Affected · Changes
 ```
 
 Everything lives under `docs/`. The two glossaries are deliberately separate: product terms go in `PRODUCT.md`, engineering terms in `CONTEXT.md`, and a term lives in exactly one of them.

@@ -77,3 +77,5 @@ Make it with `sp new adr "<title>" --relates <id of the artifact that raised it>
 - Stop at the waterline. Never emit a Plan or code — hand off the Task.
 - ADRs are sparse. If a decision isn't hard-to-reverse *and* surprising *and* a real trade-off, it's a Task Note, not an ADR.
 - When authoring intent (Direction), the human decides — always interview. When authoring a Task/ADR whose answer is derivable from code and existing docs, you may resolve autonomously and surface only genuine ambiguity.
+- When the operator's statement conflicts with a recorded artifact (in any repo), read the governing artifact in its owning repo before writing the resolution down, and cite it: the statement is a claim, the record is ground truth; a conflict that survives verification is a supersession or amendment, not a fact.
+- Commit before ending (`conventions` → Commit): prior uncommitted work in the repo first, on its own, then this session's batch as a logical commit.
