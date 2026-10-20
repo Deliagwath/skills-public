@@ -35,7 +35,7 @@ Write each artifact with `sp new <kind> "<title>" --relates <id>,…` (`~/.agent
 
 **Epic** (`docs/epics/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: [<direction id>]`. Body: Goal · Scope · Out of scope.
 
-**Task** (`docs/tasks/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: [<epic id>]`. Body: Goal · Acceptance Criteria · Notes.
+**Task** (`docs/tasks/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: [<epic id>]`, or `[<direction id>]` when the Direction is broken straight into Tasks (the Epic is optional). Body: Goal · Acceptance Criteria · Notes.
 
 **ADR** (`docs/adr/NNN-slug.md`) — frontmatter: `id`, `title`, `created`, `relates: []`, optional `supersedes: [<adr id>]`. Body: Context · Decision · Consequences.
 

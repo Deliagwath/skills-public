@@ -40,9 +40,10 @@ Glossary for this repo. Terms only — no implementation detail.
   together with the Argument that killed it. Distinct from Out of scope, which
   bounds the work rather than reporting a weighing.
 - **Ruled-out record** — where a Rejected position and its Argument are written. In
-  an ADR: the *Considered Options* and *Pros and Cons of the Options* sections. In
-  every other artifact type: prose under `## Notes`. Only the ADR carries the MADR
-  headings.
+  an ADR: the *Alternatives* section, each rejected option with the argument that
+  killed it (direction-001 Amendment 2026-10-20; ADRs written earlier with MADR's
+  *Considered Options* / *Pros and Cons of the Options* stay valid). In every other
+  artifact type: prose under `## Notes`.
 - **Supersession** — a later artifact replacing an earlier one whole. Two edges,
   written together: `supersedes` on the successor and `superseded-by` (a list) on
   the predecessor, whose body and decision are never rewritten (ADR 0005, replacing
