@@ -1075,6 +1075,24 @@ frontier_tests() {
 	out=$(cd "$FR" && nav frontier)
 	has "$mode 40s an abandoned probe parks no Task" "$out" '^task      task-009  unplanned'
 	has "$mode 40t and is not counted" "$out" '^parked    deferred 0 · abandoned 1'
+	# adr-0009 amendment 2026-10-20: a Direction or Epic finished without children is done.
+	fm docs/directions/008-done.md direction-008 ""
+	fm docs/epics/005-e.md epic-005 "direction-003"
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 40u a childless Direction is a row" "$out" '^direction direction-008  childless'
+	out=$(cd "$FR" && nav ledger done direction-008 "the host is set up from it")
+	has "$mode 40v a done Direction line, in its own ledger" "$(cat "$FR/docs/directions/LEDGER.md")" '^- direction-008 — done 2026-10-09 — effect: the host is set up from it$'
+	out=$(cd "$FR" && nav ledger done epic-005 "seen in use")
+	has "$mode 40w a done Epic line" "$(cat "$FR/docs/epics/LEDGER.md")" '^- epic-005 — done 2026-10-09 — effect: seen in use$'
+	out=$(cd "$FR" && nav frontier)
+	hasnt "$mode 40x a done Direction is no row" "$out" '^direction direction-008'
+	hasnt "$mode 40y a done Epic is no row" "$out" '^epic      epic-005'
+	has "$mode 40z tree shows it" "$(cd "$FR" && nav tree direction-008)" '^tree      direction-008 .*\[done 2026-10-09\]$'
+	fm docs/tasks/010-t.md task-010 "direction-008"
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 40A a done Direction parks nothing below it" "$out" '^task      task-010  unplanned'
+	out=$(cd "$FR" && nav ledger done plan-003 "x")
+	has "$mode 40B done refuses a plan" "$out" 'done takes a direction, epic or task, and plan-003 is a plan'
 }
 
 run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
@@ -1597,7 +1615,7 @@ EOF
 	out=$(cd "$R" && nav ledger implemented plan-030 "3/3 passed")
 	has "$mode 34d an implemented line" "$(cat "$R/docs/plans/LEDGER.md")" '^- plan-030 — implemented 2026-10-09 — verification: 3/3 passed$'
 	out=$(cd "$R" && nav ledger done plan-030 "x")
-	has "$mode 34e the wrong kind refuses" "$out" 'done takes a task, and plan-030 is a plan'
+	has "$mode 34e the wrong kind refuses" "$out" 'done takes a direction, epic or task, and plan-030 is a plan'
 	out=$(cd "$R" && nav ledger reconcile probe-b "found and fixed")
 	has "$mode 34f a reconcile line" "$(cat "$R/docs/probes/LEDGER.md")" '^- probe-b — reconciled 2026-10-09 — found and fixed$'
 	has "$mode 34g and the probe's status" "$(cat "$R/docs/probes/probe-b.md")" '^status: reconciled$'

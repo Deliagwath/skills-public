@@ -50,8 +50,8 @@ These are the classes `sp frontier` lists, in its order; its fixture (`scripts/t
 - **Childless product Directions** — no product Epic's or Story's `relates` contains its id.
 - **Unengineered Stories** — no FW Direction's or Task's `relates` contains the Story's id. This is the hand-off frontier.
 - **Open probes** — any `status: open` probe, in either layer. Resuming it ranks above starting new work in the same area.
-- **Childless Directions** — no Epic's or Task's `relates` contains this Direction's id. Epics are optional, so a Direction broken straight into Tasks is not childless.
-- **Childless Epics** — no Task's `relates` contains this Epic's id.
+- **Childless Directions** — no Epic's or Task's `relates` contains this Direction's id. Epics are optional, so a Direction broken straight into Tasks is not childless. Nor is one whose latest `docs/directions/LEDGER.md` line is `done` (adr-0009 amendment).
+- **Childless Epics** — no Task's `relates` contains this Epic's id, and its latest `docs/epics/LEDGER.md` line is not `done`.
 - **Unplanned Tasks** — no live Plan's `relates` contains this Task's id. A Task whose latest `docs/tasks/LEDGER.md` line is `done` is never an orphan. Neither is one whose latest line is a Plan-less `implemented` (adr-0009): it is awaiting an observed effect.
 - **Unimplemented Plans** — every Plan whose id has no entry in `docs/plans/LEDGER.md`. A Plan with a ledger entry is implemented — no Phase 3 check needed for it.
 

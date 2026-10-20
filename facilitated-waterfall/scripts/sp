@@ -365,7 +365,9 @@ sp ledger — append one ledger line (adr-0004: done is a line, not a status)
 usage     sp ledger implemented <plan> "<N>/<N> passed"
           sp ledger implemented <task> "<evidence: commits, probe, paths>"
                                   a Plan-less Task only (adr-0009)
-          sp ledger done <task> "<the effect seen, where>"
+          sp ledger done <direction|epic|task> "<the effect seen, where>"
+                                  a Direction or Epic only when finished
+                                  without children (adr-0009 amendment)
           sp ledger not-achieved <task> "<what was seen>"
           sp ledger deferred <direction|epic|task> "<why; what reopens it>"
           sp ledger abandoned <direction|epic|task> "<why>"
@@ -2075,7 +2077,7 @@ q_frontier() {
 			# Test LED[p] only behind (p in LED): a lookup alone would create it.
 			led = (p in LED) ? LED[p] : ""
 			if (k == "probe") { if (st == "open") row(1, "resume", p, "open probe", p ~ /^docs\/product\// ? "reflect" : "bottom-up") }
-			else if (k == "task" && led ~ /^done /) continue
+			else if (k ~ /^(direction|epic|task)$/ && led ~ /^done /) continue
 			else if (k == "task" && led ~ /^effect not achieved /) row(2, "resume", p, "effect not achieved", "bottom-up, this ledger line as Trigger")
 			else if (k == "product-direction") { if (!kids(p, "product-epic story")) row(3, "product", p, "childless", "direct Breakdown") }
 			else if (k == "story") { if (!kids(p, "direction task")) row(4, "story", p, "unengineered", "top-down") }
@@ -2370,7 +2372,14 @@ q_ledger() {
 			need=plan ledger=docs/plans/LEDGER.md line="- $rid — implemented $day — verification: $text"
 		fi
 		;;
-	done | effect) need=task ledger=docs/tasks/LEDGER.md line="- $rid — done $day — effect: $text" ;;
+	done | effect)
+		# adr-0009 amendment: a Direction or Epic finished without children is done too.
+		case $k in
+		direction | epic | task) need=$k ;;
+		*) die "done takes a direction, epic or task, and $rid is a $k" ;;
+		esac
+		ledger=docs/${k}s/LEDGER.md line="- $rid — done $day — effect: $text"
+		;;
 	not-achieved) need=task ledger=docs/tasks/LEDGER.md line="- $rid — effect not achieved $day — $text" ;;
 	deferred | abandoned | reopened)
 		# adr-0009: a Direction, Epic or Task, in its own kind's ledger.
@@ -2387,7 +2396,7 @@ q_ledger() {
 		*) ledger=docs/probes/LEDGER.md line="- $rid — reconciled $day — $text" st=reconciled ;;
 		esac
 		;;
-	*) die "no ledger verb '$verb': implemented <plan|plan-less task>, done <task>, not-achieved <task>, deferred|abandoned|reopened <direction|epic|task>, reconcile <probe>" ;;
+	*) die "no ledger verb '$verb': implemented <plan|plan-less task>, done <direction|epic|task>, not-achieved <task>, deferred|abandoned|reopened <direction|epic|task>, reconcile <probe>" ;;
 	esac
 	[ "$k" = "$need" ] || die "$verb takes a $need, and $rid is a $k"
 	mkdir -p "$(dirname "$ledger")"
