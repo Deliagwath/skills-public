@@ -172,18 +172,36 @@ _install_dsh_skills() {
 # A namespace may carry a scripts/ folder (e.g. facilitated-waterfall/scripts/nav).
 # Claude Code and Cursor link only SKILL.md, and OpenCode and Mirai copy it, so a
 # skill can't find its scripts relative to itself. Instead every skill names one
-# fixed path, ~/.agent-skills/<namespace>/scripts/, linked here to the repo.
+# fixed path, linked here to the repo:
+#   ~/.agent-skills/<namespace>/scripts/          the namespace's shared scripts (sp)
+#   ~/.agent-skills/<namespace>/<skill>/scripts/  one skill's own (conventions/check-graph.py)
 
-_link_scripts() {
-    local dir="$1"
-    local namespace="$2"
-    local target="$HOME/.agent-skills/$namespace/scripts"
-
-    [ -d "$dir/scripts" ] || return 0
+_link_dir() {
+    local src="$1"
+    local target="$2"
     mkdir -p "$(dirname "$target")"
     [ -L "$target" ] || rm -rf "$target"
-    ln -sfn "${dir%/}/scripts" "$target"
-    _ok "Scripts      [$namespace]: ~/.agent-skills/$namespace/scripts/ → repo folder"
+    ln -sfn "$src" "$target"
+}
+
+_link_scripts() {
+    local dir="${1%/}"
+    local namespace="$2"
+    local root="$HOME/.agent-skills/$namespace"
+    local skills=() skill s
+
+    if [ -d "$dir/scripts" ]; then
+        _link_dir "$dir/scripts" "$root/scripts"
+        _ok "Scripts      [$namespace]: ~/.agent-skills/$namespace/scripts/ → repo folder"
+    fi
+    for s in "$dir"/*/scripts; do
+        [ -d "$s" ] && [ -f "$(dirname "$s")/SKILL.md" ] || continue
+        skill="$(basename "$(dirname "$s")")"
+        _link_dir "$s" "$root/$skill/scripts"
+        skills+=("$skill")
+    done
+    [ ${#skills[@]} -eq 0 ] ||
+        _ok "Scripts      [$namespace]: ~/.agent-skills/$namespace/<skill>/scripts/ for ${skills[*]}"
 }
 
 # --- Dependencies: Universal Ctags for nav ---

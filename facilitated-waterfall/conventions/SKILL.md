@@ -141,7 +141,7 @@ The handbook (`docs/handbook/`, five fixed files) is the one store the knowledge
 
 ## Batch check
 
-Per-file `sp check` is the reflex, but a multi-artifact write (a breakdown batch, a reconciliation) needs the whole graph. Run this skill's `scripts/check-graph.py [repo root or docs dir]`: it reports same-repo `relates` / `supersedes` / `superseded-by` references that do not resolve, duplicate ids, and non-sequential numbering per kind. Cross-workspace entries (`repo:id`, or a path outside `docs/`) are expected and skipped — the same rule as `sp check`'s informational drift. Fix the breaks before committing.
+Per-file `sp check` is the reflex, but a multi-artifact write (a breakdown batch, a reconciliation) needs the whole graph. Run `~/.agent-skills/facilitated-waterfall/conventions/scripts/check-graph.py [repo root or docs dir]` (this skill's `scripts/`, linked there by `install.sh`): it reports same-repo `relates` / `supersedes` / `superseded-by` references that do not resolve, duplicate ids, and non-sequential numbering per kind. Cross-workspace entries (`repo:id`, or a path outside `docs/`) are expected and skipped — the same rule as `sp check`'s informational drift. Fix the breaks before committing.
 
 ## Commit
 

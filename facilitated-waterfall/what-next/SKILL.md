@@ -19,7 +19,7 @@ The waterfall is a pipeline: Direction → Epic? → Task → Plan → Code. Wor
 
 Do not call `sp tree` once per Direction: `sp frontier` already joins every tree. `sp frontier <id>` narrows to one Direction or Epic when the answer is cut (`+N more`).
 
-**Without `sp`**, from frontmatter — this skill's `scripts/frontmatter-graph.sh` (run with `sh`, first arg the repo root) is the one-pass extraction: one line per artifact, `kind|id|relates|intent`, frontmatter only, `relates` captured in both YAML forms. The grep below is its degraded fallback:
+**Without `sp`**, from frontmatter — `~/.agent-skills/facilitated-waterfall/what-next/scripts/frontmatter-graph.sh` (this skill's `scripts/`, linked there by `install.sh`; run with `sh`, first arg the repo root) is the one-pass extraction: one line per artifact, `kind|id|relates|intent`, frontmatter only, `relates` captured in both YAML forms. The grep below is its degraded fallback:
 
 ```sh
 # id + relates for every artifact, no bodies.
