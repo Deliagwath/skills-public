@@ -271,7 +271,9 @@ sp frontier — the not-done work, in what-next's classes, shallowest stage firs
 usage     sp frontier [<id|path>] [--awaiting]
           resume rows first (open probes, effect not achieved), then childless
           product Directions, unengineered Stories, childless Directions and
-          Epics, unplanned Tasks, unimplemented Plans; one row per artifact, with
+          Epics (an Epic whose Tasks section names repo:task-NNN is broken down
+          there: "Tasks in <repo>", not followed), unplanned Tasks,
+          unimplemented Plans; one row per artifact, with
           its stage, the skill that closes it and its intent line. Tasks awaiting
           an observed effect (a Plan-less one too, by its implemented line) are a
           count; --awaiting lists them. A deferred or abandoned artifact and its
@@ -2030,6 +2032,20 @@ q_frontier() {
 		for (i = 1; i <= n; i++) if (!(a[i] in BY) && index(" " ks " ", " " R_KP[a[i]] " ")) m++
 		return m
 	}
+	# The repos whose minted Tasks (repo:task-NNN) the Tasks manifest of Epic p names:
+	# its breakdown lives there. Read from the Epic, never followed (direction-004).
+	function elsewhere(p,  l, s, r, seen, o) {
+		s = 0; o = ""
+		while ((getline l < p) > 0) {
+			if (l ~ /^## /) { s = (l ~ /^## Tasks/); continue }
+			while (s && match(l, /[A-Za-z0-9_.-]+:task-[0-9]+/)) {
+				r = substr(l, RSTART, RLENGTH); sub(/:.*/, "", r)
+				if (!(r in seen)) { seen[r] = 1; o = o (o != "" ? ", " : "") r }
+				l = substr(l, RSTART + RLENGTH)
+			}
+		}
+		close(p); return o
+	}
 	# The live Plans of Task p that have a plan-ledger line.
 	function planned(p,  n, a, i, m) {
 		n = split(CH[p], a, " "); m = 0
@@ -2082,7 +2098,11 @@ q_frontier() {
 			else if (k == "product-direction") { if (!kids(p, "product-epic story")) row(3, "product", p, "childless", "direct Breakdown") }
 			else if (k == "story") { if (!kids(p, "direction task")) row(4, "story", p, "unengineered", "top-down") }
 			else if (k == "direction") { if (!kids(p, "epic task")) row(5, "direction", p, "childless", "/breakdown") }
-			else if (k == "epic") { if (!kids(p, "task")) row(6, "epic", p, "childless", "/breakdown") }
+			else if (k == "epic") {
+				if (kids(p, "task")) continue
+				if ((o = elsewhere(p)) != "") row(6, "epic", p, "Tasks in " o, "sp -C <repo> frontier; sp ledger done here once seen")
+				else row(6, "epic", p, "childless", "/breakdown")
+			}
 			else if (k == "task") {
 				n = kids(p, "plan")
 				if (!n && led ~ /^implemented /) row(9, "awaiting", p, "awaiting an observed effect", "sp ledger done once seen in use")

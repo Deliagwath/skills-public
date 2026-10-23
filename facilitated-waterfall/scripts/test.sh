@@ -1093,6 +1093,18 @@ frontier_tests() {
 	has "$mode 40A a done Direction parks nothing below it" "$out" '^task      task-010  unplanned'
 	out=$(cd "$FR" && nav ledger done plan-003 "x")
 	has "$mode 40B done refuses a plan" "$out" 'done takes a direction, epic or task, and plan-003 is a plan'
+	# An Epic whose own Tasks manifest names another workspace's Task is broken down
+	# there (probe-2026-10-24-frontier-calls-a-cross-repo-epic-childless); never followed.
+	fm docs/epics/006-e.md epic-006 "direction-003"
+	printf '%s\n' "" "## Tasks" "" "| Task | Repo | Depends on |" "|---|---|---|" \
+		"| other:task-007 | other | — |" "| third:task-001 | third | other:task-007 |" "" "## Sequencing" >>"$FR/docs/epics/006-e.md"
+	fm docs/epics/007-e.md epic-007 "direction-003"
+	printf '%s\n' "" "## Goal" "" "Like other:task-007." "" "## Tasks" "" "| (planned) | here | — |" >>"$FR/docs/epics/007-e.md"
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 40C a cross-workspace manifest is no childless row" "$out" '^epic      epic-006  Tasks in other, third → sp -C <repo> frontier; sp ledger done here once seen · no intent line$'
+	has "$mode 40D a (planned) manifest is still childless" "$out" '^epic      epic-007  childless → /breakdown'
+	out=$(cd "$FR" && nav ledger done epic-006 "seen in use there")
+	hasnt "$mode 40E a done line takes it off" "$(cd "$FR" && nav frontier)" '^epic      epic-006'
 }
 
 run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
