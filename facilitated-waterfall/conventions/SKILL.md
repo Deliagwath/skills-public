@@ -147,7 +147,7 @@ Per-file `sp check` is the reflex, but a multi-artifact write (a breakdown batch
 
 An artifact is durable when committed; an uncommitted batch is work in progress, never done. Before committing this session's work:
 
-1. `git status` the repo. If *prior* uncommitted work exists (a previous session, possibly unrelated), commit it first as its own logical commit — never fold it into yours, and never write on top of a mixed tree.
+1. `git status` the repo. If *prior* uncommitted work exists (a previous session, possibly unrelated), commit it first as its own logical commit — never fold it into yours, and never write on top of a mixed tree. Judge committability before acting: a *complete* batch (reconciled, verified, its own logical unit) commits first; work that is *deliberately parked* — half-built, or whose own ledger line says deferred — is the user's WIP, not yours to finish: leave it in place, flag it to the user, and path-scope your commit (`git commit -- <your files>`) so it can never fold in.
 2. Commit this session's work as logical batches: a reconciliation is one commit (the probe, the artifacts it produced, the amendments, the glossary entries, the ledger lines); a breakdown is one (the Epics or Tasks, plus the glossary entries they use).
 3. Verify what you just wrote before the commit: markdown has no linter safety net, so a patch that landed non-exact can silently corrupt a region — read the changed region back (or `git diff` the batch), then `sp check` each artifact.
 
