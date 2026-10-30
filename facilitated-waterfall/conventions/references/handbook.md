@@ -18,7 +18,7 @@ The handbook is a workspace's short, graded lessons for working in it. It lives 
 - **Warrants.** A probe can be an entry's warrant. The origin probe goes in the source (`` Source: `Sym.member` (path) · probe-<id> ``), and a promotion records the probe that justified it (`Stage: established ← probe-<id>`).
 - **Research is the contrast.** Long-form material lives in `docs/research/` and is lookup-only: it is never inherited and never pruned. An existing `docs/knowledge/` is treated the same way. It is never written to, moved or renamed.
 - **Nothing leaves the handbook except into a probe.** A removed entry (wrong, stale, superseded, merged away or idle) is moved word for word, with its reason, into the probe that removed it. It becomes sealed history, which is looked up and never deleted. `docs/` may be gitignored, so a plain deletion could not be recovered.
-- **`sp`** (*The `sp` script*) is how a session reads the handbook's links. Always pass the target path, so it resolves the right workspace.
+- **`sp`** (*The `sp` script*) is how a session reads the handbook's links. Always pass the target path, so it resolves the right workspace. It also validates entry shape: `sp check <handbook file>` reports an entry missing `Because:`, or whose `Stage:` value does not *begin* with one of the four stage words, as drift — a free-form first token after `Stage:` reads as "no Stage" (a qualifier may follow a keyword, e.g. `Stage: provisional · …`, but never replace it). Run it after any handbook write; `0 breaking · 0 drift` is the gate.
 
 ### Inherit
 

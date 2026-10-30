@@ -1,6 +1,6 @@
 ---
 name: facilitated-waterfall-what-next
-description: Surveys the project's docs and codebase to recommend the single best next action. Finds the frontier of the waterfall — the shallowest stage with unfinished work — using the relates graph and codebase evidence. Use when you want to know what to work on next, or when starting fresh in a project.
+description: Surveys the project's docs and codebase to recommend the single best next action, or to enumerate all the work that remains. Finds the frontier of the waterfall — the shallowest stage with unfinished work — using the relates graph and codebase evidence. Use when you want to know what to work on next, what is left, or when starting fresh in a project.
 ---
 
 Find the **frontier** of the project — the boundary between what's been done and what hasn't — and recommend the single best next action.
@@ -14,10 +14,13 @@ The waterfall is a pipeline: Direction → Epic? → Task → Plan → Code. Wor
 ## Phase 1 — Build the graph
 
 **With `sp`** (`~/.agent-skills/facilitated-waterfall/scripts/sp`; test that file), Phases 1–2 are two calls and nothing else, bodies unread:
-- `sp frontier`: every orphan of Phase 2, one row per artifact in its highest class, resume work first, then the stages shallowest first. Each row gives its stage, its id, the skill that closes it, and its `intent:` line or `no intent line`. The summary line counts the Tasks awaiting an observed effect; `sp frontier --awaiting` lists them. State comes from the ledgers, probe status and supersession, as in Phase 2. An `unsure` line, or a row marked `unsure`, means a `relates` link there is broken or ambiguous.
+- `sp frontier`: every orphan of Phase 2, one row per artifact in its highest class, resume work first, then the stages shallowest first. Each row gives its stage, its id, the skill that closes it, and its `intent:` line or `no intent line`. The summary line counts the Tasks awaiting an observed effect; `sp frontier --awaiting` lists them, and `--awaiting --all` prints the whole uncut list — the default output can be cut by a `+N more` line, so never count from a cut output. State comes from the ledgers, probe status and supersession, as in Phase 2. An `unsure` line, or a row marked `unsure`, means a `relates` link there is broken or ambiguous.
+
+**The row order is class, then id — read it that way.** `sp frontier` sorts by class rank first, then by id within a class, and the `--awaiting` rows sit below every frontier row — so a larger id in a shallower class prints above a smaller id in a deeper one, and that is correct. When the operator calls the order wrong, read each row's class and check each artifact's class against its latest ledger line before suspecting the sort: ids jumping classes are the recorded decision (direction-006 C3 owns the class order), not a defect. Re-ranking across classes, or ranking by a declared sequence, is an amendment to direction-006 through `top-down` Phase 3 — and sp models no dependency relation at all, so declared sequencing in an Epic is never a rank key.
+
 - `sp check --all`: links that are broken or ambiguous make the graph unreliable there. Name them in the recommendation rather than reason past them.
 
-Do not call `sp tree` once per Direction: `sp frontier` already joins every tree. `sp frontier <id>` narrows to one Direction or Epic when the answer is cut (`+N more`).
+Do not call `sp tree` once per Direction: `sp frontier` already joins every tree. `sp frontier <id>` narrows to one Direction or Epic when the answer is cut (`+N more`); `--all` instead widens the cut output back to every Direction when the ask is the whole repo.
 
 **Without `sp`**, from frontmatter — `~/.agent-skills/facilitated-waterfall/what-next/scripts/frontmatter-graph.sh` (this skill's `scripts/`, linked there by `install.sh`; run with `sh`, first arg the repo root) is the one-pass extraction: one line per artifact, `kind|id|relates|intent`, frontmatter only, `relates` captured in both YAML forms. The grep below is its degraded fallback:
 
@@ -78,6 +81,22 @@ Take the top ~3 frontier candidates (shallowest orphans first). For each, read *
 
 Drop any candidate that turns out to be already implemented — replace it with the next-shallowest orphan. Use `git log` recency only to break ties between equally-leveraged candidates; momentum is a weak signal, not a classifier.
 
+## Phase 4 variant — full inventory (when the ask is "what's left", not "what's next")
+
+When the operator asks for the *list* of what remains, the deliverable is the complete inventory; the Phase 4 ranking then becomes a short closing "what I'd do first" (at most three lines, the sharpest levers, one sentence each).
+
+A report shape that reads well, in this order:
+
+1. **Open probes** — each with what its `## Open questions` still needs, not its history.
+2. **Frontier rows** by class — unplanned Tasks, unimplemented Plans, each with its intent line and its governing parent.
+3. **Awaiting an observed effect** — the full list from `sp frontier --awaiting --all` (never the cut default), grouped by governing parent (first `relates` entry that sits higher), with the count and the ledger filter stated: how many rows have their own task-ledger line, how many are implemented through plan-ledger lines only.
+4. **Parked** in one line (the `parked` line's counts).
+5. **`sp check --all` classified by drift key** — the expected-background classes in one line each (cross-workspace relates, pre-ledger written status, missing intent); breaks and downward `relates` drift named individually, each with its fix.
+6. **The uncommitted git tree** as a WIP row — work in progress that no frontier row surfaces.
+7. **Multi-repo workspace** — one summary line per sibling tree, so the operator sees which repo holds what.
+
+State the filter behind every count: a frontier row or a drift line is a derived label from the ledgers and the graph, not code-verified work, and a count without its filter reads as a fact it is not.
+
 ## Phase 4 — Recommend three, ranked
 
 Present three next actions, ranked best-first. Each maps a frontier gap to the skill that closes it:
@@ -100,7 +119,7 @@ Present three next actions, ranked best-first. Each maps a frontier gap to the s
 
 Rank by leverage: shallower frontier stages unblock more downstream work, so they rank higher. "Awaiting an observed effect" ranks below every frontier row. It takes a slot only when fewer than three frontier gaps exist. Otherwise mention the count in one line, so that it never becomes a nag list. Give each recommendation one sentence of rationale naming the evidence. If fewer than three distinct gaps exist, recommend fewer — don't pad.
 
-**Multi-repo workspaces.** When the governed docs carry cross-workspace links (`repo:id`), this repo's frontier is not the whole pipeline: prerequisites and consumers can sit in sibling repos, and the cross-repo epic's amendment or sequencing — read it in the named repo — defines the true order. Rank by that, and name the cross-repo task(s) in the recommendation so the operator sees the chain. And because amendments rewrite consumption relationships, verify *which surface* the consumer consumes (a route, a feed, in-process events) in its latest amendment before asserting who consumes what.
+**Multi-repo workspaces.** When the governed docs carry cross-workspace links (`repo:id`), this repo's frontier is not the whole pipeline: prerequisites and consumers can sit in sibling repos, and the cross-repo epic's amendment or sequencing — read it in the named repo — defines the true order. Rank by that, and name the cross-repo task(s) in the recommendation so the operator sees the chain. When grouping rows by governing parent, a `repo:`-prefixed or path-form link is a real parent edge — group under the sibling repo it names; a local-only grouping turns cross-repo-governed rows into a false orphan cluster. And because amendments rewrite consumption relationships, verify *which surface* the consumer consumes (a route, a feed, in-process events) in its latest amendment before asserting who consumes what.
 
 **Intent trace.** Under each recommendation, show the composed intent: one sentence per level, leaf to root, from the `intent:` lines gathered in Phase 1, following the first `relates` entry in list order that sits higher (`conventions` → Artifact formats; `sp trace <id>` gives it). Where a level has no `intent:`, write `<id>: no intent line`. That is information, not a defect, so don't fill it in from the body.
 
@@ -120,5 +139,7 @@ If the user picks one, invoke the suggested skill with the context already gathe
 - Phase 1–2 are frontmatter-only: `sp frontier` and `sp check --all`, or grep cold. No body reads until Phase 3; then `sp show <id> Goal` rather than the whole file.
 - Phase 3 inspects at most ~3 candidates; body reads stay O(few), independent of project size.
 - Resolve shallower frontier stages before deeper ones — unblock the pipeline top-down.
+- A frontier row's rank comes from its class before its id — an id out of sequence across classes is the spec, not a bug to patch in the sort.
 - In a multi-repo workspace, rank against the cross-repo epic's current sequencing, read in the named repo — not only this repo's frontier; and assert a consumption relationship only after reading the consumer's latest amendment.
 - Recommend three ranked actions; recommend fewer only if fewer real gaps exist — never pad.
+- State the filter behind any count taken from a ledger or the doc tree — a derived label is not a verified fact.

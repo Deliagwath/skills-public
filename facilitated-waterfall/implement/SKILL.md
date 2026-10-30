@@ -36,9 +36,13 @@ Check the implementation against:
 
 Surface any gap explicitly. Do not report done if any verification item fails or any ADR decision is violated.
 
+**Attribute a suite failure to a clean baseline before calling it yours.** A full suite on a shared tree can fail for reasons the tree's baseline carries, so reproduce each failure in a clean `git worktree` at `HEAD` (same command, clean checkout) before attributing it to your diff. A failure that reproduces on clean `HEAD` is pre-existing: report it with the reproduction, and do not repair it inside your batch — the repair is a different task with its own record, and silently fixing unrelated red folds another workstream's fix into your commit.
+
+**Delegating the test-writing.** When the verification work is a large test-writing effort (several test homes, each with its own fixtures and style), hand it to a subagent — the parent keeps the mechanism and the record context, and the child is context-blind, so the brief must stand alone. It needs, all of it: (1) a per-file summary of what changed — signatures, new fields, semantics, not a diff dump; (2) the existing test home per behaviour, and the repo's exact runner command; (3) the repo's test-style rules — every new block cites its source artifact in a comment, no existing assertion is weakened, extend an existing home before creating a new file; (4) hard boundaries — do not modify non-test source files, and if a test reveals a genuine mechanism bug, report it verbatim instead of fixing it (the fix is the parent's call, because the parent holds the ADR verdicts); (5) a safety note when the tree is shared — name files carrying another workstream's uncommitted edits as off-limits, and say that credential-bearing config files must never be quoted in output. Demand an output schema with exact pass/fail counts and verbatim failure output, then re-run the same suite yourself: a child's summary is a self-report, not evidence.
+
 ## Phase 5 — Record
 
-Once every Verification item passes and no ADR is violated, run `sp ledger implemented <plan-id> "<N>/<N> checks passed"`. It appends this line to `docs/plans/LEDGER.md` (without `sp`, append it by hand, creating the file with no header):
+Once every Verification item passes and no ADR is violated, run `sp ledger implemented <plan-id> "<N>/<N> checks passed"`. It appends this line to `docs/plans/LEDGER.md` (without `sp`, append it by hand, creating the file with no header). The argument renders verbatim after an auto-prepended `verification: ` — pass the bare summary (`"6/6 passed"`), never a string of its own that begins with `verification:`, or the line stutters and the ledger entry must be patched.
 
 ```
 - <plan-id> — implemented <date> — verification: <N>/<N> checks passed
