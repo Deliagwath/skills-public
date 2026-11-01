@@ -1121,7 +1121,7 @@ export_tests() {
 	a() { jx ".artifacts[] | select(.id == \"$1\") | $2"; }
 	has "$mode 41d version 1, workspace root, no id" "$(jx '[.version, .workspace == "'"$FR"'", .root] | @tsv')" '^1	true	$'
 	has "$mode 41e one entry per artifact" "$(jx '.artifacts | length')" '^23$'
-	has "$mode 41f the fields of an entry" "$(jx '.artifacts[0] | keys_unsorted | join(",")')" '^id,kind,path,title,intent,relates,supersedes,superseded-by,state,ledger,frontier$'
+	has "$mode 41f the fields of an entry" "$(jx '.artifacts[0] | keys_unsorted | join(",")')" '^id,kind,path,title,intent,relates,supersedes,superseded-by,state,ledger,frontier,request$'
 	has "$mode 41g a written status: is not state" "$(a task-001 '[.state, .frontier.class] | @tsv')" '^todo	unplanned$'
 	has "$mode 41h every live Plan ledgered: implemented" "$(a task-002 .state)" '^implemented$'
 	has "$mode 41i a done line, and the line itself" "$(a task-003 '[.state, .ledger] | @tsv')" '^done	task-003 — done 2026-10-13 — effect: seen$'
@@ -1158,6 +1158,69 @@ EOF
 	(cd "$FR" && "$SP" ledger deferred direction-003 "parked" >/dev/null 2>&1)
 	J=$(cd "$FR" && "$SP" export 2>&1)
 	has "$mode 41y deferred, and what it holds has no row" "$(a direction-003 .state) $(a plan-003 .frontier)" '^deferred null$'
+}
+
+# 42. requests (task-035, direction-006 amendment 2026-11-01): a ledger line that
+# is no state, marked and first within its class on the frontier, carried by
+# export; and the partly broken down Epic. On the frontier fixture.
+request_tests() {
+	build_front
+	fm docs/tasks/011-t.md task-011 "epic-002"
+	fm docs/adr/0001-a.md adr-0001 "direction-001"
+	out=$(cd "$FR" && nav ledger requested task-011 "take it")
+	has "$mode 42a a requested line, in the kind's own ledger" "$(cat "$FR/docs/tasks/LEDGER.md")" '^- task-011 — requested 2026-10-09 — take it$'
+	out=$(cd "$FR" && nav frontier)
+	rows=$(printf '%s\n' "$out" | awk '$1 == "task" { print $2 }' | tr '\n' ' ')
+	[ "$rows" = "task-011 task-001 " ] && ok "$mode 42b requested first within its class" || no "$mode 42b requested first within its class" "$out"
+	has "$mode 42c the row is marked" "$out" '^task      task-011  requested · unplanned → /plan · no intent line$'
+	has "$mode 42d the unrequested row is not" "$out" '^task      task-001  unplanned → /plan'
+	contract "$mode 42e contract: frontier with a request" "$out"
+	out=$(cd "$FR" && nav ledger requested plan-003 "this one too")
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 42f a request changes no class, and is counted" "$(printf '%s\n' "$out" | sed -n 2p)" '^frontier  workspace · 10 rows · resume 3 · product 1 · story 1 · direction 1 · epic 1 · task 2 · plan 1 · requested 2 · awaiting an observed effect: 1 Task (--awaiting lists them)$'
+	has "$mode 42g a request is no state" "$(cd "$FR" && nav tree task-011 | sed -n 2p)" '^tree      task-011  docs/tasks/011-t.md  · 0 descendants$'
+	if command -v jq >/dev/null 2>&1; then
+		J=$(cd "$FR" && "$SP" export 2>&1)
+		has "$mode 42h export carries the request, state untouched" "$(printf '%s' "$J" | jq -r '.artifacts[] | select(.id == "task-011") | [.state, .request] | @tsv')" '^todo	task-011 — requested 2026-10-09 — take it$'
+		has "$mode 42i no request: null" "$(printf '%s' "$J" | jq -r '.artifacts[] | select(.id == "task-001") | .request')" '^null$'
+	fi
+	out=$(cd "$FR" && nav ledger withdrawn task-011 "not now")
+	has "$mode 42j a withdrawn line" "$(cat "$FR/docs/tasks/LEDGER.md")" '^- task-011 — withdrawn 2026-10-09 — not now$'
+	rows=$(cd "$FR" && nav frontier | awk '$1 == "task" { print $2 }' | tr '\n' ' ')
+	[ "$rows" = "task-001 task-011 " ] && ok "$mode 42k withdrawn: back to id order" || no "$mode 42k withdrawn: back to id order" "$rows"
+	has "$mode 42l nothing in force: nothing to withdraw" "$(cd "$FR" && nav ledger withdrawn task-011 "x")" 'task-011 has no request in force: nothing to withdraw'
+	# A note naming another verb sets nothing: task-001 stays unplanned.
+	out=$(cd "$FR" && nav ledger requested task-001 "after — done 2026-10-01 — not really")
+	has "$mode 42m a note sets no state" "$(cd "$FR" && nav frontier)" '^task      task-001  requested · unplanned'
+	# Refused: what the assistant gate could never accept (orchestrator:direction-029 C1, C3).
+	cp "$FR/docs/tasks/LEDGER.md" "$TMP/led.before"
+	has "$mode 42n done is refused" "$(cd "$FR" && nav ledger requested task-003 "x")" 'task-003 is done: a request needs open work'
+	has "$mode 42o superseded is refused" "$(cd "$FR" && nav ledger requested direction-004 "x")" 'direction-004 is superseded by direction-005: request its successor'
+	has "$mode 42p an ADR is refused" "$(cd "$FR" && nav ledger requested adr-0001 "x")" 'requested takes a direction, epic, task, plan or open probe, and adr-0001 is a adr'
+	has "$mode 42q a closed probe is refused" "$(cd "$FR" && nav ledger requested probe-b "x")" 'probe-b is reconciled: only an open probe takes a request'
+	has "$mode 42r a product probe is refused" "$(cd "$FR" && nav ledger requested probe-p "x")" 'probe-p is a product probe'
+	has "$mode 42s an implemented Plan is refused" "$(cd "$FR" && nav ledger requested plan-001 "x")" 'plan-001 is implemented: a Plan with a ledger line takes no request'
+	out=$(cd "$FR" && nav ledger requested probe-a "resume it")
+	has "$mode 42t an open probe takes one" "$(cat "$FR/docs/probes/LEDGER.md")" '^- probe-a — requested 2026-10-09 — resume it$'
+	(cd "$FR" && nav ledger deferred direction-003 "parked" >/dev/null)
+	has "$mode 42u deferred is refused" "$(cd "$FR" && nav ledger requested direction-003 "x")" 'direction-003 is deferred: a request needs open work'
+	has "$mode 42v parked below a deferral is refused" "$(cd "$FR" && nav ledger requested task-005 "x")" 'task-005 sits under a deferred or abandoned artifact'
+	cmp -s "$FR/docs/tasks/LEDGER.md" "$TMP/led.before" && ok "$mode 42w a refusal writes nothing" || no "$mode 42w a refusal writes nothing" "$(diff "$TMP/led.before" "$FR/docs/tasks/LEDGER.md")"
+	# A request with no row waits, on its own line.
+	out=$(cd "$FR" && nav ledger requested epic-002 "finish it")
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 42x a request with no row: one line, what to do" "$out" '^requested 2 with no frontier row (first: epic-002): sp tree epic-002 shows why; withdraw it, or request what is open under it$'
+	# A minted Epic with (planned) rows in its Tasks manifest is partly broken down.
+	printf '%s\n' "" "## Tasks" "" "| Task | Depends on |" "|---|---|" "| task-002 | — |" "| (planned) — the next one | task-002 |" "" "## Sequencing" "" "| (planned) | not a manifest row |" >>"$FR/docs/epics/002-e.md"
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 42y a minted Epic with (planned) rows is a row" "$out" '^epic      epic-002  requested · partly broken down → /breakdown'
+	has "$mode 42z its request has a row; the parked plan-003 still waits" "$out" '^requested 1 with no frontier row (first: plan-003)'
+	sed -i.bak 's/^| (planned) — the next one | task-002 |$/| task-011 | task-002 |/' "$FR/docs/epics/002-e.md"
+	hasnt "$mode 42A all minted: no row; a (planned) outside Tasks is no manifest row" "$(cd "$FR" && nav frontier)" '^epic      epic-002'
+	fm docs/epics/008-e.md epic-008 "direction-003"
+	printf '%s\n' "" "## Tasks" "" "| other:task-001 | other | — |" "| (planned) | other | — |" >>"$FR/docs/epics/008-e.md"
+	(cd "$FR" && nav ledger reopened direction-003 "back" >/dev/null)
+	has "$mode 42B minted elsewhere, (planned) here: partly broken down" "$(cd "$FR" && nav frontier)" '^epic      epic-008  partly broken down → /breakdown'
 }
 
 run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
@@ -1695,6 +1758,7 @@ EOF
 	migrate_tests
 	frontier_tests
 	export_tests
+	request_tests
 	help_tests
 	unset SP_TODAY
 }

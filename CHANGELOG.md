@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `sp ledger requested <id> "<note>"` and `sp ledger withdrawn <id> "<why>"`: the operator marks work with one append-only line in the kind's ledger (task-035).
+  - Takes a Direction, Epic, Task, Plan or open probe. Refused when done, superseded, deferred, abandoned or parked under a parked ancestor, and for a closed probe, an implemented Plan, an ADR or a product artifact.
+  - A request is not state. `sp frontier` marks requested rows (`requested ·`) and lists them first within their class, counts them in the summary, and adds a `requested` line for requests with no row (direction-006 amendment 2026-11-01). `sp export` adds a `request` field; version stays 1.
+- `sp frontier` lists a **partly broken-down Epic** (`partly broken down → /breakdown`): minted Tasks, and `(planned)` rows still in its `## Tasks` manifest. Before, it disappeared once it had one child (task-035). A Direction's planned Epics have no format yet, so Directions are unchanged.
 - `sp export [<id>]` prints the graph and its derived state as one JSON document, for programs (task-034, adr-0010).
   - `version` 1: per artifact, `id`, `kind`, `path`, `title`, `intent`, `relates`, `supersedes`, `superseded-by`, `state` (`todo`, `in-progress`, `implemented`, `done`, `deferred`, `abandoned`, `superseded`, `live` for an ADR, or a probe's status), the latest ledger line, and the `frontier` row. With an id, only that subtree. `sp help export` documents the fields.
   - It is the one verb outside the answer contract (direction-004 Amendment 2026-11-01): stdout is only the document, never wrapped or cut; a failure exits non-zero with an empty stdout and one stderr line.
