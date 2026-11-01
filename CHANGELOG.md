@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `sp export [<id>]` prints the graph and its derived state as one JSON document, for programs (task-034, adr-0010).
+  - `version` 1: per artifact, `id`, `kind`, `path`, `title`, `intent`, `relates`, `supersedes`, `superseded-by`, `state` (`todo`, `in-progress`, `implemented`, `done`, `deferred`, `abandoned`, `superseded`, `live` for an ADR, or a probe's status), the latest ledger line, and the `frontier` row. With an id, only that subtree. `sp help export` documents the fields.
+  - It is the one verb outside the answer contract (direction-004 Amendment 2026-11-01): stdout is only the document, never wrapped or cut; a failure exits non-zero with an empty stdout and one stderr line.
+  - `frontier`'s classification moved into the shared graph builder, so `frontier` and `export` cannot disagree; `tree` and `frontier` answers are byte-identical on three repos.
+
 - `sp frontier [<id>] [--awaiting]` lists the not-done work in one call (direction-006).
   - One row per orphan in `what-next`'s classes: open probes and `effect not achieved` Tasks first, then childless product Directions, unengineered Stories, childless Directions and Epics, unplanned Tasks, unimplemented Plans. Each row has its stage, id, the skill that closes it and its `intent:` line. Tasks awaiting an observed effect are a count; `--awaiting` lists them. A broken link adds an `unsure` line; an ambiguous one marks the rows it may name. With an id, only that subtree.
   - State comes from the ledgers, probe status and both supersession edges, never a written `status:`. `tree` and `frontier` now share one graph builder; `tree`'s output is unchanged.

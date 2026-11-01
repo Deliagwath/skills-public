@@ -151,6 +151,8 @@ Read (also through the nav alias):
   outline <id>                       frontmatter, headings and item ids, with lines
   show <id> <heading|item>..         exactly those sections or items, with lines
   log [<count>] [--all]              sp's own call log, failures first (SP_LOG)
+For programs (JSON on stdout, no summary line; adr-0010):
+  export [<id>]                      the graph and each artifact's derived state
 Write:
   new <kind> "<title>"               a new artifact, numbered and well formed
   supersede <new> --of <old>         both edges: supersedes and superseded-by
@@ -264,6 +266,29 @@ reads     frontmatter and docs/*/LEDGER.md
 writes    nothing but sp's state
 example   sp tree direction-004
 then      sp show <id> <section> on the descendant you need; sp new for the next one
+EOF
+	;;
+	export) cat <<'EOF'
+sp export — the graph and its derived state as one JSON document, for programs
+usage     sp export [<id|path>]
+          for a program, not a model: a model reads sp tree, frontier and show.
+          stdout is exactly one JSON document, never cut (adr-0010). Version 1:
+          {"version":1, "workspace":<root>, "root":<id>|null, "artifacts":[...]}
+          one object per artifact: id, kind, path, title, intent (null: none),
+          relates, supersedes, superseded-by (an id when it names a doc here,
+          else as written), state, ledger (the latest state line, or null),
+          frontier ({stage, class, skill} as sp frontier rows it, or null).
+          state: todo, in-progress, implemented, done, deferred, abandoned,
+          superseded; live for an ADR; a probe's own status. in-progress means
+          an open probe, a live Plan or started work below it; commits are not
+          read. With an id, only that artifact and what sp tree lists under it.
+          A new field keeps the version; removing or changing one raises it.
+reads     frontmatter and docs/*/LEDGER.md; a written status: counts only on a probe
+writes    nothing but sp's state
+errors    exit non-zero, nothing on stdout, one line on stderr saying what to do
+example   sp export | jq '.artifacts[] | select(.frontier != null) | .id'
+example   sp export direction-004
+then      parse it; to read the work yourself, run sp frontier
 EOF
 	;;
 	frontier) cat <<'EOF'
@@ -464,7 +489,7 @@ if [ "$Q" = help ]; then
 	exit 0
 fi
 case $Q in
-def | docs | module | file | trace | unresolved | check | tree | frontier | outline | show | log | new | supersede | relate | ledger | migrate)
+def | docs | module | file | trace | unresolved | check | tree | frontier | outline | show | log | export | new | supersede | relate | ledger | migrate)
 	case ${1:-} in help | --help | -h) cmd_help "$Q"; exit 0 ;; esac
 	for a in "$@"; do case $a in help | --help | -h) cmd_help "$Q"; exit 0 ;; esac; done
 	;;
@@ -512,7 +537,7 @@ def | docs | module | file | trace | tree | outline | show) [ -n "$ARG" ] || die
 esac
 SEL=
 case $Q in
-def | docs | module | file | trace | check | unresolved | tree | frontier | outline | log) [ "$NP" -le 1 ] || die "$Q takes one argument" ;;
+def | docs | module | file | trace | check | unresolved | tree | frontier | outline | log | export) [ "$NP" -le 1 ] || die "$Q takes one argument" ;;
 migrate) [ "$NP" = 0 ] || die "migrate takes no argument: sp migrate [--apply] [--settle <file>]" ;;
 show) [ -n "$ARG2" ] || die "show needs a doc and a section: sp show adr-0005 Decision (sp outline lists them)" ;;
 new) [ -n "$ARG2" ] || die 'new needs a kind and a title: sp new task "<title>"' ;;
@@ -1934,6 +1959,7 @@ function graph_load(idsf, ledf, sizesf,  i, p, k, t, j, q, v, n, c, x, l, a, w, 
 		t = FMS["intent"]; gsub(/^"|"$/, "", t); if (t != "") IN[p] = t
 		for (j = 1; j <= FMC["relates"]; j++) {
 			v = FM["relates", j]; q = rs(v, p)
+			RL[p] = RL[p] " " (q != "" ? cid(q) : v)
 			if (q == "" && !(v ~ /\// && v !~ /^(\.\/)?docs\// || v ~ /^[A-Za-z0-9_.-]+:[^\/]/)) {
 				if (!UN[p]++) UNF[p] = canon(p) " -> " v
 				if (RS_C > 1) { n = split(RS_LIST, c, " "); for (x = 1; x <= n; x++) AMB[c[x]] = 1 }
@@ -1948,20 +1974,136 @@ function graph_load(idsf, ledf, sizesf,  i, p, k, t, j, q, v, n, c, x, l, a, w, 
 		# another workspace seals this doc as written; it is not followed (ADR 0005).
 		for (j = 1; j <= FMC["superseded-by"]; j++) {
 			v = FM["superseded-by", j]; q = rs(v, p, 1)
+			SB[p] = SB[p] " " (q != "" ? cid(q) : v)
 			if (q == "" && (v ~ /\// && v !~ /^(\.\/)?docs\// || v ~ /^[A-Za-z0-9_.-]+:[^\/]/)) { if (!((p, v) in BYS)) { BYS[p, v] = 1; BY[p] = (p in BY ? BY[p] ", " : "") v }; continue }
 			if (q != "" && !((p, q) in BYS)) { BYS[p, q] = 1; BY[p] = (p in BY ? BY[p] ", " : "") canon(q) }
 		}
-		for (j = 1; j <= FMC["supersedes"]; j++) { q = rs(FM["supersedes", j], p, 1); if (q != "" && !((q, p) in BYS)) { BYS[q, p] = 1; BY[q] = (q in BY ? BY[q] ", " : "") canon(p) } }
+		for (j = 1; j <= FMC["supersedes"]; j++) { v = FM["supersedes", j]; q = rs(v, p, 1); SU[p] = SU[p] " " (q != "" ? cid(q) : v); if (q != "" && !((q, p) in BYS)) { BYS[q, p] = 1; BY[q] = (q in BY ? BY[q] ", " : "") canon(p) } }
 		if (R_N[i] != "" && R_N[i] + 0 > NX[k]) { NX[k] = R_N[i] + 0; W[k] = length(R_N[i]) }
 	}
 	# Ledger lines, the later winning (ADR 0004).
 	while ((getline l < ledf) > 0) {
 		split(l, a, "\t"); x = a[2]; sub(/^[ \t]*[-*][ \t]+/, "", x); split(x, w, " "); q = rs(w[1], "")
 		if (q == "") continue
-		if (match(x, / — (implemented|done|effect not achieved|reconciled|resolved|deferred|abandoned|reopened) [0-9-]+/)) LED[q] = substr(x, RSTART + 5, RLENGTH - 5)
+		if (match(x, / — (implemented|done|effect not achieved|reconciled|resolved|deferred|abandoned|reopened) [0-9-]+/)) { LED[q] = substr(x, RSTART + 5, RLENGTH - 5); LL[q] = x }
 		if (x ~ / — implemented /) PI[q] = 1
 	}
 	for (pq in PL) { split(pq, a, SUBSEP); if (a[1] in PI) NPI[a[2]]++ }
+}
+# A row names a doc as sp resolves it: a file with no number (plans/x.md
+# with id: plan-118) by its own id, else its path; never plan-NNN.
+function cid(p,  c) { c = canon(p); if (c ~ /-N+$/) c = R_I[X_PI[p]] ~ /^[a-z-]+-[0-9]+$/ ? R_I[X_PI[p]] : p; return c }
+# The live children of p of the kinds in ks: a sealed child is no breakdown,
+# and ADRs and probes are working memory, not structure.
+function kids(p, ks,  n, a, i, m) {
+	n = split(CH[p], a, " "); m = 0
+	for (i = 1; i <= n; i++) if (!(a[i] in BY) && index(" " ks " ", " " R_KP[a[i]] " ")) m++
+	return m
+}
+# The repos whose minted Tasks (repo:task-NNN) the Tasks manifest of Epic p names:
+# its breakdown lives there. Read from the Epic, never followed (direction-004).
+function elsewhere(p,  l, s, r, seen, o) {
+	s = 0; o = ""
+	while ((getline l < p) > 0) {
+		if (l ~ /^## /) { s = (l ~ /^## Tasks/); continue }
+		while (s && match(l, /[A-Za-z0-9_.-]+:task-[0-9]+/)) {
+			r = substr(l, RSTART, RLENGTH); sub(/:.*/, "", r)
+			if (!(r in seen)) { seen[r] = 1; o = o (o != "" ? ", " : "") r }
+			l = substr(l, RSTART + RLENGTH)
+		}
+	}
+	close(p); return o
+}
+# The live Plans of Task p that have a plan-ledger line.
+function planned(p,  n, a, i, m) {
+	n = split(CH[p], a, " "); m = 0
+	for (i = 1; i <= n; i++) if (R_KP[a[i]] == "plan" && !(a[i] in BY) && (a[i] in PI)) m++
+	return m
+}
+# SUB: p and what tree lists under it.
+function g_sub(p) { SUB[p] = 1; g_walk(p, 1) }
+function g_walk(p, d,  i, n, a, c) {
+	n = split(CH[p], a, " ")
+	for (i = 1; i <= n; i++) {
+		c = a[i]; if (c in SUB) continue; SUB[c] = 1
+		if (d < 6 && R_KP[c] != "adr" && R_KP[c] != "probe") g_walk(c, d + 1)
+	}
+}
+# A deferred or abandoned artifact parks its structure below it (adr-0009):
+# PARK names its verb, OFF holds it and everything under it. ADRs and probes
+# are not parked: an open probe is still resume work. Only a Direction, Epic
+# or Task parks: a probe ledger line also says abandoned.
+function g_park(  p) {
+	for (p in LED) if (LED[p] ~ /^(deferred|abandoned) / && R_KP[p] ~ /^(direction|epic|task)$/) { PARK[p] = substr(LED[p], 1, index(LED[p], " ") - 1); OFF[p] = 1 }
+	for (p in PARK) park(p, 1)
+}
+function park(p, d,  i, n, a, c) {
+	n = split(CH[p], a, " ")
+	for (i = 1; i <= n; i++) {
+		c = a[i]; if (c in OFF || R_KP[c] == "adr" || R_KP[c] == "probe") continue; OFF[c] = 1
+		if (d < 6) park(c, d + 1)
+	}
+}
+# The frontier row of a live, unparked doc p (Task 031), or "" for none:
+# rank, stage, class and skill, joined by SUBSEP. Needs g_park first.
+function fclass(p,  k, st, led, n, o) {
+	k = R_KP[p]
+	st = R_ST[p]; gsub(/["\047]/, "", st)
+	# Test LED[p] only behind (p in LED): a lookup alone would create it.
+	led = (p in LED) ? LED[p] : ""
+	if (k == "probe") { if (st == "open") return 1 SUBSEP "resume" SUBSEP "open probe" SUBSEP (p ~ /^docs\/product\// ? "reflect" : "bottom-up"); return "" }
+	if (k ~ /^(direction|epic|task)$/ && led ~ /^done /) return ""
+	if (k == "task" && led ~ /^effect not achieved /) return 2 SUBSEP "resume" SUBSEP "effect not achieved" SUBSEP "bottom-up, this ledger line as Trigger"
+	if (k == "product-direction") return kids(p, "product-epic story") ? "" : 3 SUBSEP "product" SUBSEP "childless" SUBSEP "direct Breakdown"
+	if (k == "story") return kids(p, "direction task") ? "" : 4 SUBSEP "story" SUBSEP "unengineered" SUBSEP "top-down"
+	if (k == "direction") return kids(p, "epic task") ? "" : 5 SUBSEP "direction" SUBSEP "childless" SUBSEP "/breakdown"
+	if (k == "epic") {
+		if (kids(p, "task")) return ""
+		if ((o = elsewhere(p)) != "") return 6 SUBSEP "epic" SUBSEP "Tasks in " o SUBSEP "sp -C <repo> frontier; sp ledger done here once seen"
+		return 6 SUBSEP "epic" SUBSEP "childless" SUBSEP "/breakdown"
+	}
+	if (k == "task") {
+		n = kids(p, "plan")
+		if (!n && led ~ /^implemented /) return 9 SUBSEP "awaiting" SUBSEP "awaiting an observed effect" SUBSEP "sp ledger done once seen in use"
+		if (!n) return 7 SUBSEP "task" SUBSEP "unplanned" SUBSEP "/plan"
+		if (planned(p) == n) return 9 SUBSEP "awaiting" SUBSEP "awaiting an observed effect" SUBSEP "sp ledger done once seen in use"
+		return ""
+	}
+	if (k == "plan") return (p in PI) ? "" : 8 SUBSEP "plan" SUBSEP "unimplemented" SUBSEP "/implement"
+	return ""
+}
+# GS: the derived state of every doc (adr-0004, adr-0009), one word, never a
+# written status: on a non-probe. superseded first; a probe is its status; an
+# ADR is live; the latest ledger line (reopened: as if never parked); a Task
+# whose live Plans all have a ledger line is implemented; else todo. Then a
+# todo above a started doc (an open probe, a live Plan, or anything
+# implemented, done or in progress) is in-progress. Commits are not read.
+function g_state(  p, k, led, st, n, a, i, q) {
+	for (p in TI) {
+		k = R_KP[p]; led = (p in LED) ? LED[p] : ""
+		if (led ~ /^reopened /) led = ""
+		if (p in BY) st = "superseded"
+		else if (k == "probe") { st = R_ST[p]; gsub(/["\047]/, "", st); if (st == "") st = "unknown" }
+		else if (k == "adr") st = "live"
+		else if (led ~ /^(done|deferred|abandoned) /) st = substr(led, 1, index(led, " ") - 1)
+		else if (led ~ /^(implemented|effect not achieved) /) st = "implemented"
+		else if (k == "task" && (n = kids(p, "plan")) && planned(p) == n) st = "implemented"
+		else st = "todo"
+		GS[p] = st
+	}
+	for (q in CH) { n = split(CH[q], a, " "); for (i = 1; i <= n; i++) PAR[a[i]] = PAR[a[i]] " " q }
+	for (p in GS) {
+		st = GS[p]; k = R_KP[p]
+		if (k == "probe" ? st == "open" : (k == "plan" && st == "todo") || st ~ /^(implemented|done|in-progress)$/) g_up(p)
+	}
+}
+function g_up(p,  n, a, i, q) {
+	n = split(PAR[p], a, " ")
+	for (i = 1; i <= n; i++) {
+		q = a[i]; if (q in UPV) continue; UPV[q] = 1
+		if ((q in GS) && GS[q] == "todo") GS[q] = "in-progress"
+		g_up(q)
+	}
 }
 '
 
@@ -2025,52 +2167,6 @@ q_frontier() {
 	ledgers
 	: >"$T/frows"
 	awk -F'\t' -v root="$f" -v aw="$AWAITING" -v rowsf="$T/frows" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE$AWK_GRAPH"'
-	# The live children of p of the kinds in ks: a sealed child is no breakdown,
-	# and ADRs and probes are working memory, not structure.
-	function kids(p, ks,  n, a, i, m) {
-		n = split(CH[p], a, " "); m = 0
-		for (i = 1; i <= n; i++) if (!(a[i] in BY) && index(" " ks " ", " " R_KP[a[i]] " ")) m++
-		return m
-	}
-	# The repos whose minted Tasks (repo:task-NNN) the Tasks manifest of Epic p names:
-	# its breakdown lives there. Read from the Epic, never followed (direction-004).
-	function elsewhere(p,  l, s, r, seen, o) {
-		s = 0; o = ""
-		while ((getline l < p) > 0) {
-			if (l ~ /^## /) { s = (l ~ /^## Tasks/); continue }
-			while (s && match(l, /[A-Za-z0-9_.-]+:task-[0-9]+/)) {
-				r = substr(l, RSTART, RLENGTH); sub(/:.*/, "", r)
-				if (!(r in seen)) { seen[r] = 1; o = o (o != "" ? ", " : "") r }
-				l = substr(l, RSTART + RLENGTH)
-			}
-		}
-		close(p); return o
-	}
-	# The live Plans of Task p that have a plan-ledger line.
-	function planned(p,  n, a, i, m) {
-		n = split(CH[p], a, " "); m = 0
-		for (i = 1; i <= n; i++) if (R_KP[a[i]] == "plan" && !(a[i] in BY) && (a[i] in PI)) m++
-		return m
-	}
-	function walk(p, d,  i, n, a, c) {
-		n = split(CH[p], a, " ")
-		for (i = 1; i <= n; i++) {
-			c = a[i]; if (c in SUB) continue; SUB[c] = 1
-			if (d < 6 && R_KP[c] != "adr" && R_KP[c] != "probe") walk(c, d + 1)
-		}
-	}
-	# A deferred or abandoned artifact parks its structure below it (adr-0009).
-	# ADRs and probes are not parked: an open probe is still resume work.
-	function park(p, d,  i, n, a, c) {
-		n = split(CH[p], a, " ")
-		for (i = 1; i <= n; i++) {
-			c = a[i]; if (c in OFF || R_KP[c] == "adr" || R_KP[c] == "probe") continue; OFF[c] = 1
-			if (d < 6) park(c, d + 1)
-		}
-	}
-	# A row names a doc as sp resolves it: a file with no number (plans/x.md
-	# with id: plan-118) by its own id, else its path; never plan-NNN.
-	function cid(p,  c) { c = canon(p); if (c ~ /-N+$/) c = R_I[X_PI[p]] ~ /^[a-z-]+-[0-9]+$/ ? R_I[X_PI[p]] : p; return c }
 	function row(r, stage, p, cls, skill,  t) {
 		t = (p in IN) ? IN[p] : "no intent line" (R_KP[p] == "probe" ? " (title: " TI[p] ")" : "")
 		if (p in AMB) t = t " · unsure: an ambiguous link may name it (sp check --all)"
@@ -2079,37 +2175,15 @@ q_frontier() {
 	}
 	BEGIN {
 		graph_load(idsf, ledf, sizesf)
-		if (root != "") { SUB[root] = 1; walk(root, 1) }
-		# Only a Direction, Epic or Task parks: a probe ledger line also says abandoned.
-		for (p in LED) if (LED[p] ~ /^(deferred|abandoned) / && R_KP[p] ~ /^(direction|epic|task)$/) { PARK[p] = substr(LED[p], 1, index(LED[p], " ") - 1); OFF[p] = 1 }
-		for (p in PARK) park(p, 1)
+		if (root != "") g_sub(root)
+		g_park()
 		for (i = 1; i <= rs_n; i++) {
 			p = R_P[i]; k = R_K[i]
 			if (!(p in TI) || (p in BY) || (root != "" && !(p in SUB))) continue
 			if (k == "direction" || k == "product-direction") nd++
 			if (p in OFF) { if (p in PARK) NPK[PARK[p]]++; continue }
 			if (UN[p]) { un += UN[p]; if (unf == "") unf = UNF[p] }
-			st = R_ST[p]; gsub(/["\047]/, "", st)
-			# Test LED[p] only behind (p in LED): a lookup alone would create it.
-			led = (p in LED) ? LED[p] : ""
-			if (k == "probe") { if (st == "open") row(1, "resume", p, "open probe", p ~ /^docs\/product\// ? "reflect" : "bottom-up") }
-			else if (k ~ /^(direction|epic|task)$/ && led ~ /^done /) continue
-			else if (k == "task" && led ~ /^effect not achieved /) row(2, "resume", p, "effect not achieved", "bottom-up, this ledger line as Trigger")
-			else if (k == "product-direction") { if (!kids(p, "product-epic story")) row(3, "product", p, "childless", "direct Breakdown") }
-			else if (k == "story") { if (!kids(p, "direction task")) row(4, "story", p, "unengineered", "top-down") }
-			else if (k == "direction") { if (!kids(p, "epic task")) row(5, "direction", p, "childless", "/breakdown") }
-			else if (k == "epic") {
-				if (kids(p, "task")) continue
-				if ((o = elsewhere(p)) != "") row(6, "epic", p, "Tasks in " o, "sp -C <repo> frontier; sp ledger done here once seen")
-				else row(6, "epic", p, "childless", "/breakdown")
-			}
-			else if (k == "task") {
-				n = kids(p, "plan")
-				if (!n && led ~ /^implemented /) row(9, "awaiting", p, "awaiting an observed effect", "sp ledger done once seen in use")
-				else if (!n) row(7, "task", p, "unplanned", "/plan")
-				else if (planned(p) == n) row(9, "awaiting", p, "awaiting an observed effect", "sp ledger done once seen in use")
-			}
-			else if (k == "plan") { if (!(p in PI)) row(8, "plan", p, "unimplemented", "/implement") }
+			if ((c = fclass(p)) != "") { split(c, F, SUBSEP); row(F[1] + 0, F[2], p, F[3], F[4]) }
 		}
 		split("resume resume product story direction epic task plan", L, " ")
 		s = ""; tot = 0
@@ -2123,6 +2197,49 @@ q_frontier() {
 		else print "then      nothing on the frontier: what-next Phase 4 (an observed effect, or a new Direction)"
 	}' </dev/null
 	sort -t '	' -k1,1n -k2,2 "$T/frows" | cut -f3-
+}
+
+# export (task-034, adr-0010): the graph and its derived state as one JSON
+# document for a program, version 1. Not an answer: no header, never held. One
+# object per artifact, in the order of the id index; with an id, that artifact
+# and what tree lists under it. A link names a doc here by its id, anything
+# else as written. The fields are on its help page.
+q_export() {
+	f=
+	[ -z "$ARG" ] || f=$(doc_of "$ARG")
+	ledgers
+	awk -F'\t' -v root="$f" -v ws="$ROOT" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE$AWK_GRAPH"'
+	function rep(s, ch, to,   r, i) {
+		r = ""
+		while ((i = index(s, ch)) > 0) { r = r substr(s, 1, i - 1) to; s = substr(s, i + 1) }
+		return r s
+	}
+	function js(s) {
+		s = rep(s, "\\", "\\\\"); s = rep(s, "\"", "\\\""); s = rep(s, "\t", "\\t"); s = rep(s, "\r", "\\r"); s = rep(s, "\n", "\\n")
+		return "\"" s "\""
+	}
+	function jl(l,  n, a, i, o) {
+		n = split(l, a, " "); o = ""
+		for (i = 1; i <= n; i++) o = o (i > 1 ? "," : "") js(a[i])
+		return "[" o "]"
+	}
+	BEGIN {
+		graph_load(idsf, ledf, sizesf)
+		if (root != "") g_sub(root)
+		g_park(); g_state()
+		printf "{\"version\":1,\"workspace\":%s,\"root\":%s,\"artifacts\":[", js(ws), (root != "" ? js(cid(root)) : "null")
+		n = 0
+		for (i = 1; i <= rs_n; i++) {
+			p = R_P[i]
+			if (!(p in TI) || (root != "" && !(p in SUB))) continue
+			fr = "null"
+			if (!(p in BY) && !(p in OFF) && (c = fclass(p)) != "") { split(c, F, SUBSEP); fr = "{\"stage\":" js(F[2]) ",\"class\":" js(F[3]) ",\"skill\":" js(F[4]) "}" }
+			printf "%s\n{\"id\":%s,\"kind\":%s,\"path\":%s,\"title\":%s,\"intent\":%s,\"relates\":%s,\"supersedes\":%s,\"superseded-by\":%s,\"state\":%s,\"ledger\":%s,\"frontier\":%s}", \
+				(n++ ? "," : ""), js(cid(p)), js(R_KP[p]), js(p), js(TI[p]), ((p in IN) ? js(IN[p]) : "null"), \
+				jl(RL[p]), jl(SU[p]), jl(SB[p]), js(GS[p]), ((p in LL) ? js(LL[p]) : "null"), fr
+		}
+		print "\n]}"
+	}' </dev/null
 }
 
 # The one frontmatter writer (Task 024). Input: one doc. -v op=add puts val in
@@ -2712,6 +2829,19 @@ q_migrate() {
 	migrate_left
 	cat "$STATE/migrate.diff"
 }
+
+# --- Machine output (adr-0010): export prints its JSON and nothing else ---
+# Built in a file and printed only on success, so a failure leaves stdout empty
+# and says what to do on stderr.
+
+if [ "$Q" = export ]; then
+	set +e
+	(set -e; q_export) >"$T/export"
+	st=$?
+	set -e
+	[ "$st" != 0 ] || cat "$T/export"
+	exit "$st"
+fi
 
 # --- The answer: header first, then the query, held to the output contract ---
 # (held, above). The answer goes through a file, not a pipe, so the query's

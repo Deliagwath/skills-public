@@ -121,6 +121,7 @@ docs/CONTEXT.md               Glossary of resolved domain terms — no implement
 | Check what you wrote | `sp check <id>` | — (`sp check` reports any drift later) |
 | Orient on an artifact | `sp tree <id>` (descendants, their state, next free numbers), `sp trace <id>` | Walk `relates` by hand |
 | List the not-done work | `sp frontier [<id>]` (orphans in `what-next`'s classes, shallowest stage first; `--awaiting` lists Tasks awaiting an observed effect, and `--awaiting --all` prints the whole uncut list — the default can be cut by a `+N more` line) | `what-next`'s grep method |
+| Give a program the graph (adr-0010) | `sp export [<id>]` — one JSON document on stdout, `version` 1: each artifact's id, kind, path, title, intent, links, derived state, latest ledger line and frontier row. For programs; it has no summary line and is never cut, so a model reads `tree`, `frontier` and `show` instead | — (parse nothing: run `sp`) |
 | Read part of a doc | `sp outline <id>`, then `sp show <id> <heading or item id>…` | Read the file |
 
 - **After every write, run `sp check <id>`** on what was written, and fix any `break` line before going on. Each line says what to do.

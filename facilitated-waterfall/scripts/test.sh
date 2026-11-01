@@ -822,7 +822,7 @@ help_tests() {
 		[ "$st" = 0 ] && ok "$mode 37c sp ${a:-(bare)}: exit 0" || no "$mode 37c sp ${a:-(bare)}: exit 0" "exit $st"
 		contract "$mode 37d contract: sp ${a:-(bare)}" "$out"
 	done
-	for c in def docs module file unresolved trace check tree frontier outline show log new supersede relate ledger migrate; do
+	for c in def docs module file unresolved trace check tree frontier outline show log export new supersede relate ledger migrate; do
 		for h in help --help; do
 			out=$(cd "$H" && "$SP" "$c" "$h" 2>&1); st=$?
 			has "$mode 37e $c $h: its own page" "$(printf '%s\n' "$out" | sed -n 1p)" "^sp $c — "
@@ -1105,6 +1105,59 @@ frontier_tests() {
 	has "$mode 40D a (planned) manifest is still childless" "$out" '^epic      epic-007  childless → /breakdown'
 	out=$(cd "$FR" && nav ledger done epic-006 "seen in use there")
 	hasnt "$mode 40E a done line takes it off" "$(cd "$FR" && nav frontier)" '^epic      epic-006'
+}
+
+# 41. export (task-034, adr-0010): one JSON document on stdout, outside the
+# answer contract, checked by parsing it. On the frontier fixture, so each
+# state below is one the frontier cases already pin.
+export_tests() {
+	command -v jq >/dev/null 2>&1 || { echo "== $mode 41 export skipped (no jq)"; return; }
+	build_front
+	J=$(cd "$FR" && "$SP" export 2>"$TMP/export.err"); st=$?
+	printf '%s' "$J" | jq -e . >/dev/null 2>&1 && ok "$mode 41a one valid JSON document" || no "$mode 41a one valid JSON document" "$J"
+	[ "$st" = 0 ] && [ ! -s "$TMP/export.err" ] && ok "$mode 41b exit 0, nothing on stderr" || no "$mode 41b exit 0, nothing on stderr" "exit $st: $(cat "$TMP/export.err")"
+	has "$mode 41c no header: stdout starts with the document" "$(printf '%s\n' "$J" | sed -n 1p)" '^{"version":1,'
+	jx() { printf '%s' "$J" | jq -r "$1" 2>&1; }
+	a() { jx ".artifacts[] | select(.id == \"$1\") | $2"; }
+	has "$mode 41d version 1, workspace root, no id" "$(jx '[.version, .workspace == "'"$FR"'", .root] | @tsv')" '^1	true	$'
+	has "$mode 41e one entry per artifact" "$(jx '.artifacts | length')" '^23$'
+	has "$mode 41f the fields of an entry" "$(jx '.artifacts[0] | keys_unsorted | join(",")')" '^id,kind,path,title,intent,relates,supersedes,superseded-by,state,ledger,frontier$'
+	has "$mode 41g a written status: is not state" "$(a task-001 '[.state, .frontier.class] | @tsv')" '^todo	unplanned$'
+	has "$mode 41h every live Plan ledgered: implemented" "$(a task-002 .state)" '^implemented$'
+	has "$mode 41i a done line, and the line itself" "$(a task-003 '[.state, .ledger] | @tsv')" '^done	task-003 — done 2026-10-13 — effect: seen$'
+	has "$mode 41j effect not achieved stays implemented, a resume row" "$(a task-004 '[.state, .frontier.stage, .frontier.class] | @tsv')" '^implemented	resume	effect not achieved$'
+	has "$mode 41k a Plan ledgered by path" "$(a plan-002 .state)" '^implemented$'
+	has "$mode 41l superseded, with both edges as ids" "$(a direction-004 '[.state, (.["superseded-by"] | join(","))] | @tsv')" '^superseded	direction-005$'
+	has "$mode 41m the successor names it" "$(a direction-005 '.supersedes | join(",")')" '^direction-004$'
+	has "$mode 41n a probe is its status" "$(a probe-a '[.state, .frontier.skill] | @tsv') $(a probe-b .state)" '^open	bottom-up reconciled$'
+	has "$mode 41o an open probe or live Plan below: in-progress" "$(a task-005 .state) $(a direction-003 .state)" '^in-progress in-progress$'
+	has "$mode 41p intent, or null" "$(a direction-001 .intent) $(a epic-001 '[(.intent == null), .frontier.class] | @tsv')" '^Direction one is for the fixture\. true	childless$'
+	has "$mode 41q relates as ids" "$(a plan-001 '.relates | join(",")')" '^task-002$'
+	J=$(cd "$FR" && "$SP" export direction-003 2>&1)
+	has "$mode 41r an id: it and what tree lists under it" "$(jx '[.root, (.artifacts | map(.id) | sort | join(","))] | @tsv')" '^direction-003	direction-003,plan-003,probe-a,probe-b,task-005$'
+	out=$(cd "$FR" && "$SP" export nosuch 2>"$TMP/export.err"); st=$?
+	[ "$st" != 0 ] && [ -z "$out" ] && ok "$mode 41s a failure: non-zero, stdout empty" || no "$mode 41s a failure: non-zero, stdout empty" "exit $st: $out"
+	has "$mode 41t ... and stderr says what to do" "$(cat "$TMP/export.err")" 'nosuch names no doc: name it by kind-prefixed id'
+	out=$(cd "$FR" && "$SP" export task-001 task-002 2>&1)
+	has "$mode 41u export takes one argument" "$out" 'export takes one argument'
+	# Another workspace is printed as written; an escaped title stays one string.
+	fm docs/tasks/008-t.md task-008 "other:direction-001"
+	mkfile "$FR/docs/tasks/009-t.md" <<'EOF'
+---
+id: task-009
+title: a "quoted"	tab \ slash
+created: 2026-10-13
+relates: [direction-001]
+---
+EOF
+	J=$(cd "$FR" && "$SP" export 2>&1)
+	printf '%s' "$J" | jq -e . >/dev/null 2>&1 && ok "$mode 41v still valid with quotes, a tab, a backslash" || no "$mode 41v still valid with quotes, a tab, a backslash" "$J"
+	has "$mode 41w another workspace as written" "$(a task-008 '.relates | join(",")')" '^other:direction-001$'
+	has "$mode 41x the title round-trips" "$(a task-009 '.title | @json')" '^"a \\"quoted\\"\\ttab \\\\ slash"$'
+	# A deferred Direction parks its structure: no frontier row under it.
+	(cd "$FR" && "$SP" ledger deferred direction-003 "parked" >/dev/null 2>&1)
+	J=$(cd "$FR" && "$SP" export 2>&1)
+	has "$mode 41y deferred, and what it holds has no row" "$(a direction-003 .state) $(a plan-003 .frontier)" '^deferred null$'
 }
 
 run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
@@ -1641,6 +1694,7 @@ EOF
 	contract "$mode 34l contract: new" "$(cd "$R" && nav new task "Contract")"
 	migrate_tests
 	frontier_tests
+	export_tests
 	help_tests
 	unset SP_TODAY
 }
