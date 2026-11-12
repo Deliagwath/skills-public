@@ -31,6 +31,10 @@ A declaration the live process has not yet read is not in force: a long-lived da
 
 When a file carries another workstream's uncommitted hunk and your change must land in the same file, do not commit their work and do not defer yours indefinitely: `git stash push -- <their paths>` (message naming the line), commit your change against HEAD path-scoped, then `git stash pop` to return their hunks to the worktree uncommitted. Verify afterwards that the pending diff contains only their hunks, and that your committed region survived the pop. Reconciliation batches that touch a shared ledger (LEDGER) may leave the ledger file itself uncommitted — name the other pending lines in the commit message.
 
+## A changed read path: drive the worktree, not the service
+
+When the change is a pure function of a store or live input — a projection, aggregate, filter — and the effect leg is a service restart you cannot run, do not wait for the restart to measure anything: import the changed function from the repo's worktree (its own venv) and drive it against the same live store the running service reads, while reading the running route for the old number. The pair — route (old code) and worktree function (new code) on the same input — is the restart's effect, recorded in the probe with the script's path. The after number is evidence of the *mechanism* only: the stamp still waits on the operator's restart and their read, and the probe says so.
+
 ## One hand-off block
 
 When a leg is the operator's, give them one short list: what to run, the expected answer, the side effect to check, and what to report back. Write the same content into the probe's Pending block *before* you respond — the file, not the transcript, is what the next session inherits.
