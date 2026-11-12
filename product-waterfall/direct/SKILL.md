@@ -3,7 +3,7 @@ name: product-waterfall-direct
 description: Descends from product intent to the product waterline — shapes a Direction checked against docs/PRODUCT.md, breaks it into Epics and Stories under docs/product/, and stops at a placed, bounded Story ready to hand to facilitated-waterfall top-down. Also refines an existing Epic or Story, including when bottom-up finds a Story that can't hold on contact with code. The PM equivalent of facilitated-waterfall top-down.
 ---
 
-Descend from intent toward the product waterline. Produce a committed Direction and the Epics/Stories beneath it, and **stop at a placed, bounded Story**. Do not cross into engineering: FW Directions, Tasks, ADRs, Plans, and code belong to `top-down` and `bottom-up`. Read `conventions` for the waterlines, the hooks, docs/PRODUCT.md structure, drilling technique, append-only rule, and confirm-before-write rule.
+Descend from intent toward the product waterline. Produce a committed Direction and the Epics/Stories beneath it, and **stop at a placed, bounded Story**. Do not cross into engineering: FW Directions, Tasks, ADRs, Plans, and code belong to `top-down` and `bottom-up`. Read `conventions` for the waterlines, the hooks, docs/PRODUCT.md structure, drilling technique, append-only rule, confirm-before-write rule, cutover rules, external-dependency grounding, and the plain-language rule.
 
 **Find the entry.** Interpret the argument to locate the starting point and tier:
 
@@ -48,6 +48,8 @@ If it conflicts with a resolved decision or product-level out of scope: **hard s
 
 > "This conflicts with a settled product decision: [D-NNN / X-NNN]. To proceed, use `reflect` to process the signal driving this and decide whether the decision should be superseded. I won't write a Direction that contradicts settled product direction."
 
+If the stated problem's solution space rests on an unresolved premise — a choice of external component, repo or service the work would depend on (which one, or adopt at all) — the premise belongs in this picture, not in the later drill: run `conventions` → Grounding external dependencies on the candidates, present the capability delta (what the project already provides, with the citations that prove it), and resolve the premise with the PM before 1d. Drilling details that the premise decision would preempt is the failure mode — the PM rejects the order and the details are wasted.
+
 ### 1d — Drill the Direction
 
 Interview the PM through each section using the drilling technique from `conventions`. One question at a time; give your recommended answer; push back.
@@ -58,7 +60,7 @@ Interview the PM through each section using the drilling technique from `convent
 
 **Out of Scope** — "What would a naive PM or engineer build that you don't want?" Require at least two explicit exclusions; don't accept "nothing is out of scope". Cross-reference product-level out of scope.
 
-**Success Signal** — "How will you know it worked? Observable outcome, not aspiration." Reject "users are happier." Accept "time-to-first-payment drops below 5 minutes."
+**Success Signal** — "How will you know it worked? Observable outcome, not aspiration." Reject "users are happier." Accept "time-to-first-payment drops below 5 minutes." A durability signal that would be proven by destroying the only copy of the user's data is shaped non-destructively, and a recovery signal is a demonstrated restore, not a schedule — see `conventions` → Cutover and data-carrying units. A signal that leans on a third-party mechanism is grounded before it is written — see `conventions` → Grounding external dependencies.
 
 **Constraints** — "What cannot change regardless of how this is solved?" (regulatory, contracts, timeline, team size). Cite the D-/X-ids that bind it.
 
@@ -101,7 +103,7 @@ Recommend a tier:
 - **Direction → Stories directly** when the Direction is focused.
 - **Direction → Epics → Stories** only when the work spans several capabilities that each need a manifest.
 
-Propose the whole shape as one-line descriptions: 2–5 Epics, or 3–7 Stories. A Story is something a user can see, do, or benefit from. Plumbing, migrations, and infrastructure are **not** Stories; note them as engineering concerns for the Story they serve, and `top-down` will make them Tasks. Confirm the shape before drilling units.
+Propose the whole shape as one-line descriptions: 2–5 Epics, or 3–7 Stories. A Story is something a user can see, do, or benefit from. Plumbing and infrastructure are **not** Stories; note them as engineering concerns for the Story they serve, and `top-down` will make them Tasks. A migration is a Story when it carries a user-visible outcome — the user's data arrives and the user is told what did not — and it obeys the cutover rules in `conventions` → Cutover and data-carrying units; its mechanics are Tasks under it. Confirm the shape before drilling units.
 
 ### 2d — Drill each unit (one at a time)
 

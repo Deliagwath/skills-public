@@ -26,6 +26,8 @@ Ask one question at a time. Give your recommended answer before waiting for a re
 
 When a section produces a vague answer, drill until it is precise before moving on.
 
+If the problem's solution space rests on an unresolved premise — a choice of external project, repo or service the direction would depend on — resolve the premise before drilling the sections it determines: survey the candidates (liveness, license, what they already provide, grounded in source) and let the user choose. Drilling detail that the premise decision would preempt wastes the interview, and the user rejects the order.
+
 ## Output
 
 When all five are resolved, run `sp new direction "<title>" --intent "<one sentence>"` (`~/.agent-skills/facilitated-waterfall/scripts/sp`): it takes the next number, writes `docs/directions/NNN-slug.md` with its frontmatter (`id: direction-NNN`, `title`, `created`, `relates: []`) and the section headings, and prints the path. Fill the five sections, then run `sp check <direction-id>`. Without `sp`, number from the highest file in `docs/directions/` and write the same by hand. Add an optional `intent:` line to the frontmatter: one sentence saying what the Direction is for, drawn from the settled Problem. Omit it rather than invent one if the interview didn't settle it.

@@ -3,7 +3,7 @@ name: product-waterfall-reflect
 description: Takes a real-world signal — or an engineering finding handed up by facilitated-waterfall bottom-up or top-down — and carries it upward against docs/PRODUCT.md. Classifies it, deliberates at the product waterline, records the outcome, and lists every product and engineering artifact the outcome affects. The only path to updating resolved decisions and product-level out of scope. The PM equivalent of facilitated-waterfall bottom-up.
 ---
 
-Take a concrete signal and carry it upward to the product waterline. The signal might be an experiment result, customer feedback, a retro finding, usage data, a market shift, something that surprised the team, or an engineering finding that a product commitment can't hold. Find the quick interpretation, then **look up**: does it confirm what we've decided, challenge it, or reveal a gap? Settle what it means, honour the commitments above the line, and feed what you learned back down to everything that depends on it. Read `conventions` for the waterlines, the hooks, docs/PRODUCT.md structure, signal classification, append-only rule, and confirm-before-write rule.
+Take a concrete signal and carry it upward to the product waterline. The signal might be an experiment result, customer feedback, a retro finding, usage data, a market shift, something that surprised the team, or an engineering finding that a product commitment can't hold. Find the quick interpretation, then **look up**: does it confirm what we've decided, challenge it, or reveal a gap? Settle what it means, honour the commitments above the line, and feed what you learned back down to everything that depends on it. Read `conventions` for the waterlines, the hooks, docs/PRODUCT.md structure, signal classification, append-only rule, confirm-before-write rule, cutover rules, external-dependency grounding, and the plain-language rule.
 
 The working document is a **Probe** (`docs/product/probes/probe-YYYY-MM-DD-slug.md`), the one mutable artifact and the session's working memory. Create it at Anchor. It carries the deliberation, so a fresh session can resume from its header instead of starting over.
 
@@ -12,7 +12,7 @@ The working document is a **Probe** (`docs/product/probes/probe-YYYY-MM-DD-slug.
 - A signal from the world → **Anchor**.
 - Loaded by `bottom-up` or `top-down` → **Anchor** in subroutine mode. The signal is the engineering finding the caller hands over, along with its probe or artifact id. Don't re-gather what the caller already found.
 - No docs/PRODUCT.md, or the PM asks to build it → **bootstrap**.
-- A signal that names a probe already `open` → **resume it**; don't create a new one. Before any other action, append a dated block under its Deliberation: `**YYYY-MM-DD — Resumed.** Read depth:`, then one line per Governing decision and governing doc, `FULL`, `PARTIAL (<sections>)` or `NOT_READ`. What you know only from the probe's own text is `NOT_READ`: the probe is testimony, not ground truth. Then re-read what the next step depends on, through the Phase 2 inherit point.
+- A signal that names a probe already `open` → **resume it**; don't create a new one. If the message brings a second signal that extends the same open probe's subject — a host, a constraint, or a capability the probe already opened a door on — resume that probe and add the signal to its Signal section; do not spawn a sibling probe: two open probes citing the same D-ids double-book the Affected walk and split the rulings. Before any other action, append the dated block `**YYYY-MM-DD — Resumed.** Read depth:` with one line per Governing decision and governing doc, `FULL`, `PARTIAL (<sections>)` or `NOT_READ`. The block lives where Phase 2 puts the read depth — in the Governing decisions heading: extend the existing read-depth lines in place, and do not create a second read-depth block under Deliberation. What you know only from the probe's own text is `NOT_READ`: the probe is testimony, not ground truth. Then re-read what the next step depends on, through the Phase 2 inherit point.
 
 **`sp`** (`~/.agent-skills/facilitated-waterfall/scripts/sp`, if installed) is how a session reads what the workspace already knows. Its rules are FW `conventions` → Handbook → Inherit. Without it, grep `docs/` as written below.
 
@@ -61,6 +61,8 @@ Read the governing decision aloud: "Here is the decision this signal contradicts
 If the PM says the decision holds, record the signal as a monitored data point: "decision holds; signal logged for future review." In subroutine mode, the caller must now find a mechanism that honours the decision. Say so explicitly. Close.
 
 If the PM says the decision should be revisited, ask: "Is this a full supersession (the old decision is wrong) or a scoped amendment (the decision holds generally but needs a carve-out)?" Drill until the PM's position is precise. Don't accept "let's revisit it" as an outcome: a decision must be made or explicitly deferred.
+
+When the PM's position rests on an external capability — "I imagine <adoptee> has that" — ground it in that turn before the ruling is drafted (conventions → Grounding external dependencies: the capability's docs section plus open-issue state suffices for a *capability* claim; a full source-tree survey is only owed when the unit would *adopt* that mechanism as its base), and report back whatever the grounding revealed about the assumption. The grounded capability is often narrower or more manual than the recall, and the ruling's wording must carry the grounded form, not the ungrounded belief.
 
 Record the deliberation in the Probe under **Deliberation**: which interpretation was tested, what the PM decided, and why. This is the durable record. A future session reading only the Probe should understand the reasoning without the chat history.
 
@@ -113,13 +115,15 @@ Present the Affected list. **Recommend; don't edit.** Each fix is its own delibe
 Distil the probe into a durable record, then freeze it. The Probe can't move to `resolved` until:
 
 - Every **Governing decision** has a recorded verdict in Deliberation: `holds: [reason]` or `superseded: [new id]`.
-- Every **open question** is resolved or explicitly deferred with a reason.
+- Every **open question** is resolved or explicitly deferred with reason. A verdict the PM is about to give in this session is resolved, not deferred — write it into the probe before reconciling, or the close is premature.
 - Every docs/PRODUCT.md change is listed under **Changes**.
 - **Affected** is filled in: either every hit or "none".
 - **Deposit** is done, by FW `conventions` → Handbook → Deposit at a close. The area is the D-/X-ids and paths this probe touched. Product practice is deposited into the same `docs/handbook/` (one handbook per workspace): how this product's decisions are made, which signals proved to be noise, what the PM weighs. A decision itself goes to docs/PRODUCT.md, never the handbook. **Changes** carries the Deposit line: each entry added, promoted, demoted or retired, or `nothing durable`. Handbook entries need no PM confirmation: they start `provisional`, and the cut test prunes them.
 - The Probe is self-contained: a fresh session reading only this file can understand what happened.
 
 Close it with `sp ledger reconcile <probe-id> "<one-line summary>"`: it appends `<probe-id> — resolved DATE — outcome: <summary>` to `docs/product/probes/LEDGER.md` and sets `status: resolved`. Without `sp`, append the line (creating the file if missing) and set the status by hand.
+
+**Reconcile exactly once, with the final summary.** The command appends one line per call: a second run — the usual consequence of closing before the last verdict lands — leaves a duplicate line in LEDGER.md. If a re-run happens anyway, dedupe the file to one line per probe, keeping the last. A fact that lands after the close is not re-reconciled: it takes a `## Post-close` section, and if it changes a decision it becomes a new signal (a new probe), while the closed probe's LEDGER line stays stable.
 
 If the signal turns out not to be worth pursuing, set `status: abandoned` and keep the probe as a record of why nothing was done.
 
