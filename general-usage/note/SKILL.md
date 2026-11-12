@@ -188,3 +188,4 @@ Backfill writes no `intent:` lines, no `docs/tasks/LEDGER.md` lines, and no `sta
 - The model classifies: stage, `portable`, gotcha shape. Never make the user classify an entry before continuing.
 - Do not record what the code already makes obvious, or what only matters to the current conversation. Record what was non-obvious or hard-won.
 - Knowledge is a snapshot, not truth. When an entry conflicts with the live codebase, the codebase wins — fix the entry.
+- **After writing, run `sp check` on each handbook file you touched, if `sp` is present** — the gate is the lines that name *your* entries; pre-existing drift naming other sessions' entries is reported, not fixed (`conventions` → Handbook holds the full gate).
