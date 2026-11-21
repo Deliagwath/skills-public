@@ -62,7 +62,7 @@ If the PM says the decision holds, record the signal as a monitored data point: 
 
 If the PM says the decision should be revisited, ask: "Is this a full supersession (the old decision is wrong) or a scoped amendment (the decision holds generally but needs a carve-out)?" Drill until the PM's position is precise. Don't accept "let's revisit it" as an outcome: a decision must be made or explicitly deferred.
 
-When the PM's position rests on an external capability — "I imagine <adoptee> has that" — ground it in that turn before the ruling is drafted (conventions → Grounding external dependencies: the capability's docs section plus open-issue state suffices for a *capability* claim; a full source-tree survey is only owed when the unit would *adopt* that mechanism as its base), and report back whatever the grounding revealed about the assumption. The grounded capability is often narrower or more manual than the recall, and the ruling's wording must carry the grounded form, not the ungrounded belief.
+When the PM's position rests on an external capability — "I imagine <adoptee> has that" — ground it in that turn before the ruling is drafted (conventions → Grounding external dependencies: the capability's docs section plus open-issue state suffices for a *capability* claim; a full source-tree survey is only owed when the unit would *adopt* that mechanism as its base; a ruling that *chooses between deployment shapes* of the dependency — hosted vs self-hosted, free vs paid, relay vs direct — additionally grounds the deciding factors, and the ruling's wording carries them), and report back whatever the grounding revealed about the assumption. The grounded capability is often narrower or more manual than the recall, and the ruling's wording must carry the grounded form, not the ungrounded belief.
 
 Record the deliberation in the Probe under **Deliberation**: which interpretation was tested, what the PM decided, and why. This is the durable record. A future session reading only the Probe should understand the reasoning without the chat history.
 
@@ -108,13 +108,15 @@ Walk down: Direction → Epics → Stories → FW Directions/Tasks → ADRs and 
 
 Present the Affected list. **Recommend; don't edit.** Each fix is its own deliberate invocation. In subroutine mode, return the outcome and the Affected list to the caller.
 
+**Sibling probe: update it in place before the close.** If a `relates:` sibling probe — the engineering probe that raised the hand-off question this probe just answered — is still `open`, rewrite its pending Reconciliation or open-questions text in place: name the ruling, point at where it is recorded (the PRODUCT.md row), and state what stays open. Open probes are working memory, the append-only rule's exception, so this in-place edit is legal and is not the edit *Recommend; don't edit* forbids — that line governs decision-record artifacts, each of which keeps its own deliberate invocation. The sibling still closes through its own `sp ledger reconcile`; the update only stops its next session from re-asking or double-recording a verdict that has already landed.
+
 ---
 
 ## Phase 6 — Reconcile
 
 Distil the probe into a durable record, then freeze it. The Probe can't move to `resolved` until:
 
-- Every **Governing decision** has a recorded verdict in Deliberation: `holds: [reason]` or `superseded: [new id]`.
+- Every **Governing decision** has a recorded verdict in Deliberation: `holds: [reason]` or `superseded: [new id]`. A probe that deliberated in prose across rounds often lacks the per-id lines: backfill one verdict line per governing id before this gate passes — a verdict the reader must infer is not a recorded verdict.
 - Every **open question** is resolved or explicitly deferred with reason. A verdict the PM is about to give in this session is resolved, not deferred — write it into the probe before reconciling, or the close is premature.
 - Every docs/PRODUCT.md change is listed under **Changes**.
 - **Affected** is filled in: either every hit or "none".
