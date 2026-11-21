@@ -143,6 +143,8 @@ Read (also through the nav alias):
   file <path>                        a file's definitions and its docs; for a doc,
                                      its trace and tree
   unresolved                         live-doc mentions that resolve to nothing
+  search <pattern> [--sealed]        docs whose text matches, live ones only unless
+                                     --sealed
   trace <id>                         intent trace up `relates`
   check [<id>] [--all]               what breaks navigation, and drift
   tree <id>                          descendants with their state, next free numbers
@@ -226,6 +228,19 @@ reads     the link table
 writes    nothing but sp's state
 example   sp unresolved
 then      fix a stale mention in the doc that holds it, or leave it: it is counted, not guessed
+EOF
+	;;
+	search) cat <<'EOF'
+sp search — the docs whose text matches a pattern, live ones only by default
+usage     sp search <pattern> [--sealed] [--all]
+          an extended regular expression, matched without case
+options   --sealed   also sealed docs (closed probes, ledgered Plans, superseded ADRs)
+          --all      every row, past the 60-line cut
+reads     every .md in the workspace, and the sealed set
+writes    nothing but sp's state
+example   sp search "rate limit"
+example   sp search 'retry|backoff' --sealed
+then      sp outline <path> for its headings, then sp show <path> <heading>
 EOF
 	;;
 	trace) cat <<'EOF'
@@ -503,7 +518,7 @@ if [ "$Q" = help ]; then
 	exit 0
 fi
 case $Q in
-def | docs | module | file | trace | unresolved | check | tree | frontier | outline | show | log | export | new | supersede | relate | ledger | migrate)
+def | docs | module | file | trace | unresolved | search | check | tree | frontier | outline | show | log | export | new | supersede | relate | ledger | migrate)
 	case ${1:-} in help | --help | -h) cmd_help "$Q"; exit 0 ;; esac
 	for a in "$@"; do case $a in help | --help | -h) cmd_help "$Q"; exit 0 ;; esac; done
 	;;
@@ -548,10 +563,11 @@ while [ $# -gt 0 ]; do
 done
 case $Q in
 def | docs | module | file | trace | tree | outline | show) [ -n "$ARG" ] || die "$Q needs an argument: run sp --help" ;;
+search) [ -n "$ARG" ] || die 'search needs a pattern: sp search "<words or a regular expression>"' ;;
 esac
 SEL=
 case $Q in
-def | docs | module | file | trace | check | unresolved | tree | frontier | outline | log | export) [ "$NP" -le 1 ] || die "$Q takes one argument" ;;
+def | docs | module | file | trace | check | unresolved | search | tree | frontier | outline | log | export) [ "$NP" -le 1 ] || die "$Q takes one argument" ;;
 migrate) [ "$NP" = 0 ] || die "migrate takes no argument: sp migrate [--apply] [--settle <file>]" ;;
 show) [ -n "$ARG2" ] || die "show needs a doc and a section: sp show adr-0005 Decision (sp outline lists them)" ;;
 new) [ -n "$ARG2" ] || die 'new needs a kind and a title: sp new task "<title>"' ;;
@@ -1383,6 +1399,7 @@ LAYER="$MODE · awk"
 case $Q in
 new | supersede | relate | ledger) LAYER="awk${YQ:+ · yq}" ;;
 outline | tree | frontier) LAYER=awk ;;
+search) LAYER="grep -E · awk" ;;
 show) LAYER="awk${MDQ:+ · mdq}"; [ -n "$MDQ" ] || LAYER="awk (reduced: no mdq, headings by awk)" ;;
 esac
 
@@ -1718,6 +1735,52 @@ q_unresolved() {
 			if (n > 40) printf "check     +%d more\n", n - 40
 			printf "unresolved %d live-doc mentions match no definition, path or code literal: a list to check, not a stale verdict\n", n
 		}' "$T/found" "$T/cand"
+}
+
+# A text search over the docs, by state: a sealed doc (closed probe, ledgered
+# Plan, superseded ADR, archive) is counted but listed only with --sealed, as
+# `sp docs` does. One row per doc, most matching lines first, with its first
+# matching line. The pattern is checked alone first: xargs folds grep's "no
+# match" and "bad pattern" into one status.
+q_search() {
+	rc=0
+	grep -q -i -E -e "$ARG" </dev/null 2>/dev/null || rc=$?
+	[ "$rc" -le 1 ] || die "search reads an extended regular expression, and grep refused this one: $ARG"
+	grep '\.md$' "$STATE/listing" >"$T/smd" || :
+	xfiles "$T/smd" grep -n -i -E -e "$ARG" >"$T/hits" 2>/dev/null || :
+	: >"$T/rows"
+	awk -F'\t' -v sealed="$SEALED" -v pat="$ARG" -v rows="$T/rows" '
+	function pl(n, w) { return n " " w (n == 1 ? "" : "s") }
+	FILENAME == ARGV[1] { if ($2 == "history") S[$1] = 1; next }
+	{
+		l = $0
+		if (!match(l, /:[0-9]+:/)) next
+		p = substr(l, 1, RSTART - 1); n = substr(l, RSTART + 1, RLENGTH - 2); t = substr(l, RSTART + RLENGTH)
+		if (!(p in c)) {
+			ord[++nd] = p
+			gsub(/^[ \t]+|[ \t]+$/, "", t); gsub(/\t/, " ", t)
+			if (length(t) > 110) t = substr(t, 1, 107) "..."
+			first[p] = "L" n ": " t
+		}
+		c[p]++
+	}
+	END {
+		for (i = 1; i <= nd; i++) { p = ord[i]; if (p in S) { sl += c[p]; sd++ } else { ll += c[p]; ld++ } }
+		if (ld) printf "search    %s in %s match \047%s\047", pl(ll, "line"), pl(ld, "live doc"), pat
+		else printf "search    no live doc matches \047%s\047", pat
+		if (sd && sealed) printf " · %s in %s, listed after them", pl(sl, "line"), pl(sd, "sealed doc")
+		else if (sd) printf " · %s more in %s (--sealed adds them)", pl(sl, "line"), pl(sd, "sealed doc")
+		printf "\n"
+		for (i = 1; i <= nd; i++) {
+			p = ord[i]
+			if ((p in S) && !sealed) continue
+			printf "%d\t%s\t%s\t%s\n", c[p], (p in S) ? "sealed" : "match", p, first[p] > rows
+		}
+	}' "$STATE/sealed" "$T/hits"
+	[ -s "$T/rows" ] || return 0
+	sort -t '	' -k2,2 -k1,1nr -k3,3 "$T/rows" |
+		awk -F'\t' '{ printf "%-10s%s  %d %s  %s\n", $2, $3, $1, ($1 == 1 ? "line" : "lines"), $4 }'
+	echo "then      sp outline <path> for its headings, then sp show <path> <heading>"
 }
 
 # The intent trace: from the artifact up `relates`, one level at a time. At
@@ -2416,6 +2479,9 @@ take_lock() {
 		fi
 		sleep 0.1
 	done
+	# q_new runs in the dispatch subshell, where the top-level EXIT trap can't see LOCK: a die
+	# after this point (a probe id that exists) would leave the lock for every later `sp new`.
+	trap 'rm -rf "$LOCK"' EXIT
 }
 
 q_new() {
@@ -2913,6 +2979,7 @@ set +e
 	module) q_module ;;
 	file) q_file ;;
 	unresolved) q_unresolved ;;
+	search) q_search ;;
 	trace) q_trace ;;
 	check) q_check ;;
 	tree) q_tree ;;
@@ -2930,11 +2997,14 @@ st=$?
 set -e
 cap=60
 [ "$SEALED$UNLINKED$ALL" = 000 ] || cap=0
+# A search with --sealed can list hundreds of closed docs: only --all lifts its cap.
+[ "$Q" != search ] || [ "$ALL" = 1 ] || cap=60
 # Only the doc listings read --type; every other verb is told what it does take.
 case $Q in
 docs | file | module) hint="narrow with --type, or ask for one doc or symbol" ;;
 tree) hint="sp tree <descendant id> reads one branch; --all prints them all" ;;
 frontier) hint="sp frontier <direction id> reads one Direction; --all prints them all" ;;
+search) hint="narrow the pattern; --all prints them all" ;;
 migrate) hint="sp migrate --all prints them all; the whole diff is in $STATE/migrate.diff" ;;
 *) hint="--all prints them all, or ask for one doc or symbol" ;;
 esac

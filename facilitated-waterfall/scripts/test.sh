@@ -822,7 +822,7 @@ help_tests() {
 		[ "$st" = 0 ] && ok "$mode 37c sp ${a:-(bare)}: exit 0" || no "$mode 37c sp ${a:-(bare)}: exit 0" "exit $st"
 		contract "$mode 37d contract: sp ${a:-(bare)}" "$out"
 	done
-	for c in def docs module file unresolved trace check tree frontier outline show log export new supersede relate ledger migrate; do
+	for c in def docs module file unresolved search trace check tree frontier outline show log export new supersede relate ledger migrate; do
 		for h in help --help; do
 			out=$(cd "$H" && "$SP" "$c" "$h" 2>&1); st=$?
 			has "$mode 37e $c $h: its own page" "$(printf '%s\n' "$out" | sed -n 1p)" "^sp $c — "
@@ -1320,6 +1320,24 @@ run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
 	hasnt "$mode 9b code literal not listed" "$out" 'launch_event_name'
 	hasnt "$mode 9c defined symbol not listed" "$out" '  build_index$'
 
+	# 9s. Search: a text search by state. A sealed doc is counted, and listed
+	# only with --sealed.
+	out=$(cd "$R" && nav search 'still on')
+	has "$mode 9s1 search lists a live doc, any case" "$out" '^match     docs/probes/probe-b.md  1 line  L5: Still on'
+	has "$mode 9s2 search ends with the next step" "$out" '^then      sp outline'
+	out=$(cd "$R" && nav search 'Found .Session.refresh. slow')
+	has "$mode 9s3 a closed probe is counted" "$out" "^search    no live doc matches .* · 1 line more in 1 sealed doc (--sealed adds them)\$"
+	hasnt "$mode 9s4 ... and not listed" "$out" 'probe-a.md'
+	out=$(cd "$R" && nav search 'Found .Session.refresh. slow' --sealed)
+	has "$mode 9s5 --sealed lists it" "$out" '^sealed    docs/probes/probe-a.md  1 line  L5: Found'
+	out=$(cd "$R" && nav search 'zz_no_such_text')
+	has "$mode 9s6 no match says so" "$out" "^search    no live doc matches 'zz_no_such_text'\$"
+	out=$(cd "$R" && nav search 'a(b' 2>&1); st=$?
+	has "$mode 9s7 a bad pattern is refused" "$out" 'grep refused this one: a(b'
+	[ "$st" = 2 ] && ok "$mode 9s8 ... and exits 2" || no "$mode 9s8 ... and exits 2" "exit $st"
+	out=$(cd "$R" && nav search 2>&1)
+	has "$mode 9s9 search needs a pattern" "$out" 'search needs a pattern'
+
 	# 10. Intent trace.
 	out=$(cd "$R" && nav trace docs/tasks/001-t.md)
 	has "$mode 10a task intent" "$out" 'docs/tasks/001-t.md: Task T intent.'
@@ -1484,7 +1502,7 @@ run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
 	out=$(cd "$R" && nav file tools/big.py)
 	has "$mode 29a file caps its definitions" "$out" '^def       +[0-9]* more'
 	for qa in "def build_index" "def Session.refresh" "docs Session.refresh" "docs build_index" "docs D-002" \
-		"def long_sig" "module src" "module ." "file src/auth/session.py" "file tools/big.py" "unresolved" "trace task-030" "trace 007"; do
+		"def long_sig" "module src" "module ." "file src/auth/session.py" "file tools/big.py" "unresolved" "search Session.refresh" "trace task-030" "trace 007"; do
 		# shellcheck disable=SC2086
 		out=$(cd "$R" && nav $qa)
 		contract "$mode 29 contract: $qa" "$out"
@@ -1622,6 +1640,10 @@ EOF
 	out=$(cd "$R" && nav new probe "Why it broke")
 	has "$mode 31i a probe gets a dated id" "$out" '^new       probe-2026-10-09-why-it-broke  docs/probes/probe-2026-10-09-why-it-broke.md'
 	has "$mode 31j a probe opens" "$(cat "$R/docs/probes/probe-2026-10-09-why-it-broke.md")" '^status: open$'
+	out=$(cd "$R" && nav new probe "Why it broke" 2>&1)
+	has "$mode 31j2 a probe id that exists is refused" "$out" 'exists: pick another title'
+	out=$(cd "$R" && nav new probe "Why it broke again" 2>&1)
+	has "$mode 31j3 the refusal leaves no lock behind" "$out" '^new       probe-2026-10-09-why-it-broke-again '
 	out=$(cd "$R" && nav new story "A story" --relates "docs/PRODUCT.md#D-002")
 	has "$mode 31k product kinds, and a PRODUCT.md anchor" "$out" '^new       story-002  docs/product/stories/002-a-story.md'
 	has "$mode 31l the anchor is kept" "$(cat "$R/docs/product/stories/002-a-story.md")" '^  - docs/PRODUCT.md#D-002$'

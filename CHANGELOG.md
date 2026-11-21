@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `sp search <pattern> [--sealed]` searches the docs' text by state (adr-0011). It lists the live docs that match, one row per doc with its first matching line, and counts the sealed ones (closed probes, ledgered Plans, superseded ADRs); `--sealed` lists those too. `bottom-up`'s topic search and `conventions` name it, with grep as the cold path.
 - `sp ledger requested <id> "<note>"` and `sp ledger withdrawn <id> "<why>"`: the operator marks work with one append-only line in the kind's ledger (task-035).
   - Takes a Direction, Epic, Task, Plan or open probe. Refused when done, superseded, deferred, abandoned or parked under a parked ancestor, and for a closed probe, an implemented Plan, an ADR or a product artifact.
   - A request is not state. `sp frontier` marks requested rows (`requested ·`) and lists them first within their class, counts them in the summary, and adds a `requested` line for requests with no row (direction-006 amendment 2026-11-01). `sp export` adds a `request` field; version stays 1.
@@ -92,6 +93,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `bottom-up` opens a probe only when something must outlive the session (adr-0011). A concrete fix that one session finishes, with every governing decision still holding, closes without a probe: verdicts in the reply, the why in the commit message, a handbook entry only if the next session would act differently. The climb still runs.
 - Skill names prefixed with their namespace (`facilitated-waterfall-*`, `general-usage-*`) to avoid collisions across clients.
 - `what-next` dropped explicit status tracking in favor of deriving the frontier from the `relates` graph and codebase evidence.
 
