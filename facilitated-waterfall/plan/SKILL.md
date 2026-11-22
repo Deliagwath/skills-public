@@ -41,3 +41,14 @@ Make the file with `sp new plan "<title>" --relates <task-id>,<adr-id>,…` (it 
 ## Rules
 - If a step requires a design decision not covered by an ADR, resolve it during drilling or flag it explicitly.
 - Verification items must be checkable without judgment — if it requires interpretation, rewrite it.
+- When a step copies a pattern from another repo (a package layout, a build script, a config row), open that
+  repo's actual files before writing the step. A step written from the pattern's name gets every detail wrong
+  that matters: field names, which config array a row does *not* belong in, which script drives the check.
+  Cite the file and line you read, so the implementer can re-check it — and the number must come from this
+  pass's own read of that file, never from a compacted summary or a sibling plan's citation: it goes stale the
+  moment that repo's file moves, and a plausible-but-wrong number only fails when the implementer re-checks.
+  Re-grep each citation as you write the step, and fix it in place before the final `sp check`.
+- Unattended runs (an overseer item, a background job) cannot run Phase 2's one-question-at-a-time interview.
+  Drive the drill against code and docs, record each decision with the evidence that took it, and reserve the
+  run's block channel for the questions that are genuinely the operator's (whether/when to deploy, whether to
+  touch another repo) rather than for anything derivable from the tree.
