@@ -97,8 +97,10 @@ Glossary for this repo. Terms only — no implementation detail.
 - **Effect observed** — evidence, at a later real opportunity, that a change had its
   intended effect. Distinct from mechanics verified. It is what separates `done`
   from `implemented`.
-- **Effect check** — a Task's optional `## Effect check`: where its effect will show,
-  what counts as seen and as not achieved, the earliest real opportunity (adr-0013).
+- **Effect check** — a Task's `## Effect check` (Where · Seen · Not achieved · Earliest):
+  where its effect will show, what counts as seen and as not achieved, the earliest real
+  opportunity (adr-0013). `breakdown` and `top-down` write it on every new Task; a Task
+  without one stays valid and gets one as an `## Amendment` on its first `observe` pass.
 - **Evidence pass** — one `observe` run on an awaiting Task: it reads evidence of real
   use, never stages it, never fixes, and leaves one `done`, `effect not achieved` or
   `checked` line. A `checked` line records a look and changes no state (adr-0013).
