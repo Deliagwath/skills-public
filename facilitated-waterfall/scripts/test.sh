@@ -1121,7 +1121,7 @@ export_tests() {
 	a() { jx ".artifacts[] | select(.id == \"$1\") | $2"; }
 	has "$mode 41d version 1, workspace root, no id" "$(jx '[.version, .workspace == "'"$FR"'", .root] | @tsv')" '^1	true	$'
 	has "$mode 41e one entry per artifact" "$(jx '.artifacts | length')" '^23$'
-	has "$mode 41f the fields of an entry" "$(jx '.artifacts[0] | keys_unsorted | join(",")')" '^id,kind,path,title,intent,relates,supersedes,superseded-by,state,ledger,frontier,request$'
+	has "$mode 41f the fields of an entry" "$(jx '.artifacts[0] | keys_unsorted | join(",")')" '^id,kind,path,title,intent,relates,supersedes,superseded-by,state,ledger,frontier,request,blocked$'
 	has "$mode 41g a written status: is not state" "$(a task-001 '[.state, .frontier.class] | @tsv')" '^todo	unplanned$'
 	has "$mode 41h every live Plan ledgered: implemented" "$(a task-002 .state)" '^implemented$'
 	has "$mode 41i a done line, and the line itself" "$(a task-003 '[.state, .ledger] | @tsv')" '^done	task-003 — done 2026-10-13 — effect: seen$'
@@ -1221,6 +1221,46 @@ request_tests() {
 	printf '%s\n' "" "## Tasks" "" "| other:task-001 | other | — |" "| (planned) | other | — |" >>"$FR/docs/epics/008-e.md"
 	(cd "$FR" && nav ledger reopened direction-003 "back" >/dev/null)
 	has "$mode 42B minted elsewhere, (planned) here: partly broken down" "$(cd "$FR" && nav frontier)" '^epic      epic-008  partly broken down → /breakdown'
+}
+
+# 43. blocks (overseer:adr-0003, overseer:task-013): a ledger line that is no
+# state; a blocked artifact leaves its class for the blocked rows, first, with
+# its question; a later unblocked line clears it; export carries it. On the
+# frontier fixture.
+block_tests() {
+	build_front
+	fm docs/tasks/011-t.md task-011 "epic-002"
+	fm docs/adr/0001-a.md adr-0001 "direction-001"
+	out=$(cd "$FR" && nav ledger blocked task-011 "which key? — probe-a")
+	has "$mode 43a a blocked line, in the kind's own ledger" "$(cat "$FR/docs/tasks/LEDGER.md")" '^- task-011 — blocked 2026-10-09 — which key? — probe-a$'
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 43b the blocked row, first, with its question" "$(printf '%s\n' "$out" | grep -v '^\(sp \|frontier\|parked\|unsure\|then\|requested\)' | sed -n 1p)" '^blocked   task-011  blocked → the operator: bottom-up, then sp ledger unblocked · which key? — probe-a$'
+	hasnt "$mode 43c it leaves its own class" "$out" '^task      task-011'
+	has "$mode 43d counted first on the summary" "$(printf '%s\n' "$out" | sed -n 2p)" '^frontier  workspace · [0-9]* rows · blocked 1 · resume'
+	contract "$mode 43e contract: frontier with a block" "$out"
+	has "$mode 43f a second block is refused" "$(cd "$FR" && nav ledger blocked task-011 "again")" 'task-011 is already blocked: unblock it first'
+	has "$mode 43g a block needs its question" "$(cd "$FR" && nav ledger blocked task-001 " ")" 'ledger needs a verb, an id and a text\|blocked needs the question'
+	has "$mode 43h done is refused" "$(cd "$FR" && nav ledger blocked task-003 "x")" 'task-003 is done: a block needs open work'
+	has "$mode 43i an ADR is refused" "$(cd "$FR" && nav ledger blocked adr-0001 "x")" 'blocked takes a direction, epic, task, plan or open probe, and adr-0001 is a adr'
+	has "$mode 43j a closed probe is refused" "$(cd "$FR" && nav ledger blocked probe-b "x")" 'probe-b is reconciled: only an open probe takes a block'
+	has "$mode 43k nothing in force: nothing to unblock" "$(cd "$FR" && nav ledger unblocked task-001 "x")" 'task-001 has no block in force: nothing to unblock'
+	# A note naming the verb sets nothing.
+	(cd "$FR" && nav ledger requested task-001 "after — blocked 2026-10-01 — not really" >/dev/null)
+	has "$mode 43l a note sets no block" "$(cd "$FR" && nav frontier)" '^task      task-001  requested · unplanned'
+	if command -v jq >/dev/null 2>&1; then
+		J=$(cd "$FR" && "$SP" export 2>&1)
+		has "$mode 43m export carries the block, state untouched" "$(printf '%s' "$J" | jq -r '.artifacts[] | select(.id == "task-011") | [.state, .frontier.class, .blocked] | @tsv')" '^todo	blocked	task-011 — blocked 2026-10-09 — which key? — probe-a$'
+		has "$mode 43n no block: null" "$(printf '%s' "$J" | jq -r '.artifacts[] | select(.id == "task-001") | .blocked')" '^null$'
+	fi
+	out=$(cd "$FR" && nav ledger blocked probe-a "resume when?")
+	has "$mode 43o an open probe takes one" "$(cd "$FR" && nav frontier)" '^blocked   probe-a  blocked → '
+	out=$(cd "$FR" && nav ledger unblocked task-011 "use the P1 key")
+	has "$mode 43p an unblocked line" "$(cat "$FR/docs/tasks/LEDGER.md")" '^- task-011 — unblocked 2026-10-09 — use the P1 key$'
+	out=$(cd "$FR" && nav frontier)
+	has "$mode 43q unblocked: back in its class" "$out" '^task      task-011  unplanned → /plan'
+	hasnt "$mode 43r and off the blocked rows" "$out" '^blocked   task-011'
+	out=$(cd "$FR" && nav ledger blocked task-011 "again later")
+	has "$mode 43s it can be blocked again" "$(cd "$FR" && nav frontier)" '^blocked   task-011  .* · again later$'
 }
 
 run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
@@ -1781,6 +1821,7 @@ EOF
 	frontier_tests
 	export_tests
 	request_tests
+	block_tests
 	help_tests
 	unset SP_TODAY
 }

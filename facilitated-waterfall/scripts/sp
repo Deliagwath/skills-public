@@ -162,7 +162,7 @@ Write:
   ledger <verb> <id> "<text>"        a ledger line: implemented, done,
                                      not-achieved, deferred, abandoned,
                                      reopened, reconcile, requested,
-                                     withdrawn
+                                     withdrawn, blocked, unblocked
   migrate [--apply] [--settle <f>]   once per repo, on the user's word: ids, links
                                      and edges to the shape sp reads
 An artifact is named by its kind-prefixed id (task-084, adr-0034), its path, or
@@ -294,7 +294,9 @@ usage     sp export [<id|path>]
           relates, supersedes, superseded-by (an id when it names a doc here,
           else as written), state, ledger (the latest state line, or null),
           frontier ({stage, class, skill} as sp frontier rows it, or null),
-          request (the requested ledger line in force, or null; task-035).
+          request (the requested ledger line in force, or null; task-035),
+          blocked (the blocked ledger line in force, or null; a blocked
+          artifact's frontier is {"stage":"blocked","class":"blocked",...}).
           state: todo, in-progress, implemented, done, deferred, abandoned,
           superseded; live for an ADR; a probe's own status. in-progress means
           an open probe, a live Plan or started work below it; commits are not
@@ -323,7 +325,10 @@ usage     sp frontier [<id|path>] [--awaiting]
           structure are off the rows, counted on a parked line. Within a class,
           rows with a request in force (sp ledger requested) come first, marked
           "requested ·", then by id; a request never changes a class. A request
-          with no row is counted on a requested line. With an id, only
+          with no row is counted on a requested line. An artifact with a block
+          in force (sp ledger blocked) leaves its class for the blocked rows,
+          listed first with the question its line carries, until a later
+          unblocked line clears it. With an id, only
           that artifact and what sp tree lists under it.
 reads     frontmatter and docs/*/LEDGER.md; a written status: counts only on a probe
 writes    nothing but sp's state
@@ -427,14 +432,20 @@ usage     sp ledger implemented <plan> "<N>/<N> passed"
                                   abandoned or parked, for a closed probe, an
                                   implemented Plan, an ADR or a product artifact
           sp ledger withdrawn <id> "<why>"   cancels the request in force
+          sp ledger blocked <direction|epic|task|plan|open probe> "<question>"
+                                  work stopped on the operator (overseer:adr-0003);
+                                  refused as a request is, and when already blocked
+          sp ledger unblocked <id> "<what was decided>"   clears the block in force
 writes    one line in docs/<kind>s/LEDGER.md (made on first use); reconcile
           also sets the probe's status (a product probe: resolved). A request
-          is no state: sp frontier marks and orders by it, sp export carries it
+          is no state: sp frontier marks and orders by it, sp export carries it.
+          A block is no state either: sp frontier rows it as blocked
 example   sp ledger implemented plan-005 "7/7 passed"
 example   sp ledger implemented task-219 "built in b2864de, probe-2026-10-18-build-task-219"
 example   sp ledger deferred direction-018 "parked for the Paperclip lab; reopens if it fails"
 example   sp ledger reconcile probe-2026-10-09-login-loop "fixed in the refresher"
 example   sp ledger requested task-255 "take this next; branch only, no merge"
+example   sp ledger blocked task-012 "which ledger holds a Plan's block? — probe-2026-11-22-x"
 then      nothing to check: the line is the record
 EOF
 	;;
@@ -2066,6 +2077,9 @@ function graph_load(idsf, ledf, sizesf,  i, p, k, t, j, q, v, n, c, x, l, a, w, 
 		# and a later withdrawn line cancels it. Read from the verb after the id
 		# only, so a note never sets it, and never from or into LED.
 		if (w[2] == "—" && w[3] ~ /^(requested|withdrawn)$/ && w[4] ~ /^[0-9]/) { if (w[3] == "requested") RQ[q] = x; else delete RQ[q]; continue }
+		# A block is no state either (overseer:adr-0003): BL holds the blocked
+		# line in force, and a later unblocked line clears it. Same reading rule.
+		if (w[2] == "—" && w[3] ~ /^(blocked|unblocked)$/ && w[4] ~ /^[0-9]/) { if (w[3] == "blocked") BL[q] = x; else delete BL[q]; continue }
 		if (match(x, / — (implemented|done|effect not achieved|reconciled|resolved|deferred|abandoned|reopened) [0-9-]+/)) { LED[q] = substr(x, RSTART + 5, RLENGTH - 5); LL[q] = x }
 		if (x ~ / — implemented /) PI[q] = 1
 	}
@@ -2255,6 +2269,8 @@ q_frontier() {
 	awk -F'\t' -v root="$f" -v aw="$AWAITING" -v rowsf="$T/frows" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE$AWK_GRAPH"'
 	function row(r, stage, p, cls, skill,  t, q) {
 		t = (p in IN) ? IN[p] : "no intent line" (R_KP[p] == "probe" ? " (title: " TI[p] ")" : "")
+		# A blocked row carries its question, the text after "blocked DATE — ".
+		if (cls == "blocked") { t = BL[p]; sub(/^.* — blocked [0-9-]+ — /, "", t) }
 		if (p in AMB) t = t " · unsure: an ambiguous link may name it (sp check --all)"
 		# A request in force orders the row first within its class and marks it
 		# (direction-006 amendment 2026-11-01); it never moves it across classes.
@@ -2272,10 +2288,13 @@ q_frontier() {
 			if (k == "direction" || k == "product-direction") nd++
 			if (p in OFF) { if (p in PARK) NPK[PARK[p]]++; continue }
 			if (UN[p]) { un += UN[p]; if (unf == "") unf = UNF[p] }
-			if ((c = fclass(p)) != "") { split(c, F, SUBSEP); row(F[1] + 0, F[2], p, F[3], F[4]) }
+			# A block in force takes the artifact out of its class (overseer:adr-0003 §3).
+			if (p in BL) row(0, "blocked", p, "blocked", "the operator: bottom-up, then sp ledger unblocked")
+			else if ((c = fclass(p)) != "") { split(c, F, SUBSEP); row(F[1] + 0, F[2], p, F[3], F[4]) }
 		}
 		split("resume resume product story direction epic task plan", L, " ")
 		s = ""; tot = 0
+		if (N[0]) { tot += N[0]; S["blocked"] = N[0]; SO["blocked"] = 1; O[++no] = "blocked" }
 		for (r = 1; r <= 8; r++) if (N[r]) { tot += N[r]; S[L[r]] += N[r]; if (!(L[r] in SO)) { SO[L[r]] = 1; O[++no] = L[r] } }
 		for (i = 1; i <= no; i++) s = s " · " O[i] " " S[O[i]]
 		if (NRQ) s = s " · requested " NRQ
@@ -2326,10 +2345,11 @@ q_export() {
 			p = R_P[i]
 			if (!(p in TI) || (root != "" && !(p in SUB))) continue
 			fr = "null"
-			if (!(p in BY) && !(p in OFF) && (c = fclass(p)) != "") { split(c, F, SUBSEP); fr = "{\"stage\":" js(F[2]) ",\"class\":" js(F[3]) ",\"skill\":" js(F[4]) "}" }
-			printf "%s\n{\"id\":%s,\"kind\":%s,\"path\":%s,\"title\":%s,\"intent\":%s,\"relates\":%s,\"supersedes\":%s,\"superseded-by\":%s,\"state\":%s,\"ledger\":%s,\"frontier\":%s,\"request\":%s}", \
+			if (!(p in BY) && !(p in OFF) && (p in BL)) fr = "{\"stage\":\"blocked\",\"class\":\"blocked\",\"skill\":\"the operator: bottom-up, then sp ledger unblocked\"}"
+			else if (!(p in BY) && !(p in OFF) && (c = fclass(p)) != "") { split(c, F, SUBSEP); fr = "{\"stage\":" js(F[2]) ",\"class\":" js(F[3]) ",\"skill\":" js(F[4]) "}" }
+			printf "%s\n{\"id\":%s,\"kind\":%s,\"path\":%s,\"title\":%s,\"intent\":%s,\"relates\":%s,\"supersedes\":%s,\"superseded-by\":%s,\"state\":%s,\"ledger\":%s,\"frontier\":%s,\"request\":%s,\"blocked\":%s}", \
 				(n++ ? "," : ""), js(cid(p)), js(R_KP[p]), js(p), js(TI[p]), ((p in IN) ? js(IN[p]) : "null"), \
-				jl(RL[p]), jl(SU[p]), jl(SB[p]), js(GS[p]), ((p in LL) ? js(LL[p]) : "null"), fr, ((p in RQ) ? js(RQ[p]) : "null")
+				jl(RL[p]), jl(SU[p]), jl(SB[p]), js(GS[p]), ((p in LL) ? js(LL[p]) : "null"), fr, ((p in RQ) ? js(RQ[p]) : "null"), ((p in BL) ? js(BL[p]) : "null")
 		}
 		print "\n]}"
 	}' </dev/null
@@ -2622,7 +2642,7 @@ q_ledger() {
 		esac
 		ledger=docs/${k}s/LEDGER.md line="- $rid — $verb $day — $text"
 		;;
-	requested | withdrawn)
+	requested | withdrawn | blocked | unblocked)
 		# task-035: a request is a line, never state. Refused where the assistant
 		# gate (orchestrator:direction-029 C1, C3) could never accept it.
 		case $k:$rp in
@@ -2632,17 +2652,23 @@ q_ledger() {
 		esac
 		ledgers
 		s=$(awk -F'\t' -v root="$rp" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE$AWK_GRAPH"'
-			BEGIN { graph_load(idsf, ledf, sizesf); g_park(); g_state(); print GS[root] "\t" ((root in OFF) && !(root in PARK) ? 1 : 0) "\t" ((root in RQ) ? 1 : 0) "\t" ((root in BY) ? BY[root] : "") }' </dev/null)
-		st=${s%%	*} s=${s#*	} off=${s%%	*} s=${s#*	} rq=${s%%	*} by=${s#*	}
+			BEGIN { graph_load(idsf, ledf, sizesf); g_park(); g_state(); print GS[root] "\t" ((root in OFF) && !(root in PARK) ? 1 : 0) "\t" ((root in RQ) ? 1 : 0) "\t" ((root in BL) ? 1 : 0) "\t" ((root in BY) ? BY[root] : "") }' </dev/null)
+		st=${s%%	*} s=${s#*	} off=${s%%	*} s=${s#*	} rq=${s%%	*} s=${s#*	} bl=${s%%	*} by=${s#*	}
 		if [ "$verb" = withdrawn ]; then
 			[ "$rq" = 1 ] || die "$rid has no request in force: nothing to withdraw (sp export $rid shows its request)"
+		elif [ "$verb" = unblocked ]; then
+			[ "$bl" = 1 ] || die "$rid has no block in force: nothing to unblock (sp export $rid shows its block)"
 		else
+			nv=request nn="request"
+			[ "$verb" = blocked ] && nv=block nn="block"
+			[ "$verb" = blocked ] && [ "$bl" = 1 ] && die "$rid is already blocked: unblock it first, or add the question to its working probe"
+			[ "$verb" = blocked ] && [ -z "$text" ] && die "blocked needs the question: sp ledger blocked $rid \"<question> — <working probe id, if any>\""
 			case $k:$st in
-			*:superseded) die "$rid is superseded by $by: request its successor" ;;
-			*:done | *:deferred | *:abandoned) die "$rid is $st: a request needs open work (sp ledger reopened $rid first, if it should run)" ;;
-			plan:implemented) die "$rid is implemented: a Plan with a ledger line takes no request; request its Task" ;;
+			*:superseded) die "$rid is superseded by $by: $nv its successor" ;;
+			*:done | *:deferred | *:abandoned) die "$rid is $st: a $nn needs open work (sp ledger reopened $rid first, if it should run)" ;;
+			plan:implemented) die "$rid is implemented: a Plan with a ledger line takes no $nn; $nv its Task" ;;
 			probe:open) ;;
-			probe:*) die "$rid is $st: only an open probe takes a request" ;;
+			probe:*) die "$rid is $st: only an open probe takes a $nn" ;;
 			esac
 			[ "$off" = 0 ] || die "$rid sits under a deferred or abandoned artifact: sp tree on its parents shows which; reopen that first"
 		fi
@@ -2655,7 +2681,7 @@ q_ledger() {
 		*) ledger=docs/probes/LEDGER.md line="- $rid — reconciled $day — $text" st=reconciled ;;
 		esac
 		;;
-	*) die "no ledger verb '$verb': implemented <plan|plan-less task>, done <direction|epic|task>, not-achieved <task>, deferred|abandoned|reopened <direction|epic|task>, reconcile <probe>, requested|withdrawn <direction|epic|task|plan|open probe>" ;;
+	*) die "no ledger verb '$verb': implemented <plan|plan-less task>, done <direction|epic|task>, not-achieved <task>, deferred|abandoned|reopened <direction|epic|task>, reconcile <probe>, requested|withdrawn|blocked|unblocked <direction|epic|task|plan|open probe>" ;;
 	esac
 	[ "$k" = "$need" ] || die "$verb takes a $need, and $rid is a $k"
 	mkdir -p "$(dirname "$ledger")"
