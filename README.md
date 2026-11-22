@@ -46,6 +46,8 @@ Direction → Epic? → Task → ADR          top-down: intent descends to the l
 
 `what-next` remains a standalone navigation skill: it surveys the `relates` graph and codebase (now including open probes) to recommend the single best next action.
 
+`observe` closes work that is built but whose effect has not been seen yet (adr-0013): on one awaiting Task it reads where the Task's Effect check says the effect shows in real use, and leaves exactly one ledger line — `done`, `effect not achieved` (a `bottom-up` trigger), or `checked`. It never stages the use and never fixes.
+
 The original granular skills — `shape`, `breakdown`, `design`, `plan`, `implement`, `audit-doc` — are the **units these compose from** and remain usable directly. Use the small parts when you want one stage; use the composed skills when you want the whole motion in one flow.
 
 ### `product-waterfall/`
