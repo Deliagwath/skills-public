@@ -160,8 +160,8 @@ Write:
   supersede <new> --of <old>         both edges: supersedes and superseded-by
   relate <id> --to <id>              one upward relates edge
   ledger <verb> <id> "<text>"        a ledger line: implemented, done,
-                                     not-achieved, deferred, abandoned,
-                                     reopened, reconcile, requested,
+                                     not-achieved, checked, deferred,
+                                     abandoned, reopened, reconcile, requested,
                                      withdrawn, blocked, unblocked
   migrate [--apply] [--settle <f>]   once per repo, on the user's word: ids, links
                                      and edges to the shape sp reads
@@ -296,7 +296,9 @@ usage     sp export [<id|path>]
           frontier ({stage, class, skill} as sp frontier rows it, or null),
           request (the requested ledger line in force, or null; task-035),
           blocked (the blocked ledger line in force, or null; a blocked
-          artifact's frontier is {"stage":"blocked","class":"blocked",...}).
+          artifact's frontier is {"stage":"blocked","class":"blocked",...}),
+          last_checked (the date of the latest checked line, or null;
+          adr-0013: an awaiting Task looked at, nothing seen yet).
           state: todo, in-progress, implemented, done, deferred, abandoned,
           superseded; live for an ADR; a probe's own status. in-progress means
           an open probe, a live Plan or started work below it; commits are not
@@ -321,7 +323,9 @@ usage     sp frontier [<id|path>] [--awaiting]
           unimplemented Plans; one row per artifact, with
           its stage, the skill that closes it and its intent line. Tasks awaiting
           an observed effect (a Plan-less one too, by its implemented line) are a
-          count; --awaiting lists them. A deferred or abandoned artifact and its
+          count; --awaiting lists them, each routed to observe: requested first,
+          then never checked, then the oldest sp ledger checked date (shown on
+          the row), then by id (adr-0013). A deferred or abandoned artifact and its
           structure are off the rows, counted on a parked line. Within a class,
           rows with a request in force (sp ledger requested) come first, marked
           "requested ·", then by id; a request never changes a class. A request
@@ -422,6 +426,10 @@ usage     sp ledger implemented <plan> "<N>/<N> passed"
                                   a Direction or Epic only when finished
                                   without children (adr-0009 amendment)
           sp ledger not-achieved <task> "<what was seen>"
+          sp ledger checked <task> "looked at <where>; <what is still missing>"
+                                  a look that saw neither the effect nor its
+                                  failure (adr-0013); only a Task awaiting an
+                                  observed effect; no state, a later done wins
           sp ledger deferred <direction|epic|task> "<why; what reopens it>"
           sp ledger abandoned <direction|epic|task> "<why>"
           sp ledger reopened <direction|epic|task> "<why>"
@@ -440,7 +448,9 @@ writes    one line in docs/<kind>s/LEDGER.md (made on first use); reconcile
           also sets the probe's status (a product probe: resolved). A request
           is no state: sp frontier marks and orders by it, sp export carries it.
           A block is no state either: sp frontier rows it as blocked
+          Nor is a look: checked orders the awaiting rows, sp export carries it
 example   sp ledger implemented plan-005 "7/7 passed"
+example   sp ledger checked task-037 "looked at docs/tasks since 2026-11-22; no new Task written yet"
 example   sp ledger implemented task-219 "built in b2864de, probe-2026-10-18-build-task-219"
 example   sp ledger deferred direction-018 "parked for the Paperclip lab; reopens if it fails"
 example   sp ledger reconcile probe-2026-10-09-login-loop "fixed in the refresher"
@@ -2080,6 +2090,9 @@ function graph_load(idsf, ledf, sizesf,  i, p, k, t, j, q, v, n, c, x, l, a, w, 
 		# A block is no state either (overseer:adr-0003): BL holds the blocked
 		# line in force, and a later unblocked line clears it. Same reading rule.
 		if (w[2] == "—" && w[3] ~ /^(blocked|unblocked)$/ && w[4] ~ /^[0-9]/) { if (w[3] == "blocked") BL[q] = x; else delete BL[q]; continue }
+		# A look that found nothing yet is no state (adr-0013 §4): CK holds the
+		# date of the latest checked line, which orders the awaiting class.
+		if (w[2] == "—" && w[3] == "checked" && w[4] ~ /^[0-9]/) { CK[q] = w[4]; continue }
 		if (match(x, / — (implemented|done|effect not achieved|reconciled|resolved|deferred|abandoned|reopened) [0-9-]+/)) { LED[q] = substr(x, RSTART + 5, RLENGTH - 5); LL[q] = x }
 		if (x ~ / — implemented /) PI[q] = 1
 	}
@@ -2164,9 +2177,9 @@ function fclass(p,  k, st, led, n, o) {
 	}
 	if (k == "task") {
 		n = kids(p, "plan")
-		if (!n && led ~ /^implemented /) return 9 SUBSEP "awaiting" SUBSEP "awaiting an observed effect" SUBSEP "sp ledger done once seen in use"
+		if (!n && led ~ /^implemented /) return 9 SUBSEP "awaiting" SUBSEP "awaiting an observed effect" SUBSEP "observe"
 		if (!n) return 7 SUBSEP "task" SUBSEP "unplanned" SUBSEP "/plan"
-		if (planned(p) == n) return 9 SUBSEP "awaiting" SUBSEP "awaiting an observed effect" SUBSEP "sp ledger done once seen in use"
+		if (planned(p) == n) return 9 SUBSEP "awaiting" SUBSEP "awaiting an observed effect" SUBSEP "observe"
 		return ""
 	}
 	if (k == "plan") return (p in PI) ? "" : 8 SUBSEP "plan" SUBSEP "unimplemented" SUBSEP "/implement"
@@ -2267,7 +2280,7 @@ q_frontier() {
 	ledgers
 	: >"$T/frows"
 	awk -F'\t' -v root="$f" -v aw="$AWAITING" -v rowsf="$T/frows" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE$AWK_GRAPH"'
-	function row(r, stage, p, cls, skill,  t, q) {
+	function row(r, stage, p, cls, skill,  t, q, o, ck) {
 		t = (p in IN) ? IN[p] : "no intent line" (R_KP[p] == "probe" ? " (title: " TI[p] ")" : "")
 		# A blocked row carries its question, the text after "blocked DATE — ".
 		if (cls == "blocked") { t = BL[p]; sub(/^.* — blocked [0-9-]+ — /, "", t) }
@@ -2275,7 +2288,11 @@ q_frontier() {
 		# A request in force orders the row first within its class and marks it
 		# (direction-006 amendment 2026-11-01); it never moves it across classes.
 		q = (p in RQ) ? 0 : 1; ROWED[p] = 1
-		if (r < 9 || aw) printf "%d\t%d\t%s\t%-9s %s  %s%s → %s · %s\n", r, q, cid(p), stage, cid(p), (q ? "" : "requested · "), cls, skill, t > rowsf
+		# Inside the awaiting class (adr-0013 §5): never checked first, then the
+		# oldest checked date, then id. The date (8 digits) rides under the request key.
+		o = q * 100000000
+		if (r == 9 && (p in CK)) { ck = CK[p]; gsub(/[^0-9]/, "", ck); o += substr(ck, 1, 8) + 0; cls = cls " · checked " CK[p] }
+		if (r < 9 || aw) printf "%d\t%d\t%s\t%-9s %s  %s%s → %s · %s\n", r, o, cid(p), stage, cid(p), (q ? "" : "requested · "), cls, skill, t > rowsf
 		N[r]++; if (!q && r < 9) NRQ++
 	}
 	BEGIN {
@@ -2347,9 +2364,9 @@ q_export() {
 			fr = "null"
 			if (!(p in BY) && !(p in OFF) && (p in BL)) fr = "{\"stage\":\"blocked\",\"class\":\"blocked\",\"skill\":\"the operator: bottom-up, then sp ledger unblocked\"}"
 			else if (!(p in BY) && !(p in OFF) && (c = fclass(p)) != "") { split(c, F, SUBSEP); fr = "{\"stage\":" js(F[2]) ",\"class\":" js(F[3]) ",\"skill\":" js(F[4]) "}" }
-			printf "%s\n{\"id\":%s,\"kind\":%s,\"path\":%s,\"title\":%s,\"intent\":%s,\"relates\":%s,\"supersedes\":%s,\"superseded-by\":%s,\"state\":%s,\"ledger\":%s,\"frontier\":%s,\"request\":%s,\"blocked\":%s}", \
+			printf "%s\n{\"id\":%s,\"kind\":%s,\"path\":%s,\"title\":%s,\"intent\":%s,\"relates\":%s,\"supersedes\":%s,\"superseded-by\":%s,\"state\":%s,\"ledger\":%s,\"frontier\":%s,\"request\":%s,\"blocked\":%s,\"last_checked\":%s}", \
 				(n++ ? "," : ""), js(cid(p)), js(R_KP[p]), js(p), js(TI[p]), ((p in IN) ? js(IN[p]) : "null"), \
-				jl(RL[p]), jl(SU[p]), jl(SB[p]), js(GS[p]), ((p in LL) ? js(LL[p]) : "null"), fr, ((p in RQ) ? js(RQ[p]) : "null"), ((p in BL) ? js(BL[p]) : "null")
+				jl(RL[p]), jl(SU[p]), jl(SB[p]), js(GS[p]), ((p in LL) ? js(LL[p]) : "null"), fr, ((p in RQ) ? js(RQ[p]) : "null"), ((p in BL) ? js(BL[p]) : "null"), ((p in CK) ? js(CK[p]) : "null")
 		}
 		print "\n]}"
 	}' </dev/null
@@ -2634,6 +2651,24 @@ q_ledger() {
 		ledger=docs/${k}s/LEDGER.md line="- $rid — done $day — effect: $text"
 		;;
 	not-achieved) need=task ledger=docs/tasks/LEDGER.md line="- $rid — effect not achieved $day — $text" ;;
+	checked)
+		# adr-0013 §4: a look that found neither the effect nor its failure. No
+		# state; taken only by a Task the frontier holds as awaiting an observed effect.
+		[ "$k" = task ] || die "checked takes a task awaiting an observed effect, and $rid is a $k"
+		[ -n "$text" ] || die "checked needs what was looked at: sp ledger checked $rid \"looked at <where>; <what is still missing>\""
+		ledgers
+		c=$(awk -F'\t' -v root="$rp" -v idsf="$STATE/ids" -v ledf="$T/ledgers" -v sizesf="$STATE/sizes" "$AWK_FM$AWK_RESOLVE$AWK_GRAPH"'
+			BEGIN { graph_load(idsf, ledf, sizesf); g_park(); g_state(); c = (root in OFF) ? "" : fclass(root); split(c, F, SUBSEP); print GS[root] "\t" F[2] "\t" F[3] }' </dev/null)
+		st=${c%%	*} c=${c#*	} cls=${c%%	*} why=${c#*	}
+		if [ "$cls" != awaiting ]; then
+			case $st in
+			done) die "$rid is done: its effect was seen, so there is nothing left to look for" ;;
+			implemented) die "$rid is implemented but not awaiting (${why:-parked or superseded}): an effect not achieved goes to bottom-up, not another look" ;;
+			*) die "$rid is $st: a look needs a built Task (sp ledger implemented, or its Plans' lines) with no done line" ;;
+			esac
+		fi
+		need=task ledger=docs/tasks/LEDGER.md line="- $rid — checked $day — $text"
+		;;
 	deferred | abandoned | reopened)
 		# adr-0009: a Direction, Epic or Task, in its own kind's ledger.
 		case $k in
@@ -2681,7 +2716,7 @@ q_ledger() {
 		*) ledger=docs/probes/LEDGER.md line="- $rid — reconciled $day — $text" st=reconciled ;;
 		esac
 		;;
-	*) die "no ledger verb '$verb': implemented <plan|plan-less task>, done <direction|epic|task>, not-achieved <task>, deferred|abandoned|reopened <direction|epic|task>, reconcile <probe>, requested|withdrawn|blocked|unblocked <direction|epic|task|plan|open probe>" ;;
+	*) die "no ledger verb '$verb': implemented <plan|plan-less task>, done <direction|epic|task>, not-achieved <task>, checked <awaiting task>, deferred|abandoned|reopened <direction|epic|task>, reconcile <probe>, requested|withdrawn|blocked|unblocked <direction|epic|task|plan|open probe>" ;;
 	esac
 	[ "$k" = "$need" ] || die "$verb takes a $need, and $rid is a $k"
 	mkdir -p "$(dirname "$ledger")"

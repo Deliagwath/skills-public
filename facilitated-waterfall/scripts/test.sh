@@ -1001,7 +1001,7 @@ frontier_tests() {
 	hasnt "$mode 39l a ledgered Plan, by id or path, is not a row" "$out" 'plan-001\|plan-002'
 	contract "$mode 39m contract: frontier" "$out"
 	out=$(cd "$FR" && nav frontier --awaiting)
-	has "$mode 39n --awaiting lists them last" "$(printf '%s\n' "$out" | tail -1)" '^awaiting  task-002  awaiting an observed effect → sp ledger done once seen in use'
+	has "$mode 39n --awaiting lists them last" "$(printf '%s\n' "$out" | tail -1)" '^awaiting  task-002  awaiting an observed effect → observe'
 	out=$(cd "$FR" && nav frontier direction-003)
 	has "$mode 39o an id reads its subtree" "$(printf '%s\n' "$out" | sed -n 2p)" '^frontier  direction-003 · 2 rows · resume 1 · plan 1 · awaiting an observed effect: 0 Tasks$'
 	out=$(cd "$FR" && nav frontier epic-002)
@@ -1121,7 +1121,7 @@ export_tests() {
 	a() { jx ".artifacts[] | select(.id == \"$1\") | $2"; }
 	has "$mode 41d version 1, workspace root, no id" "$(jx '[.version, .workspace == "'"$FR"'", .root] | @tsv')" '^1	true	$'
 	has "$mode 41e one entry per artifact" "$(jx '.artifacts | length')" '^23$'
-	has "$mode 41f the fields of an entry" "$(jx '.artifacts[0] | keys_unsorted | join(",")')" '^id,kind,path,title,intent,relates,supersedes,superseded-by,state,ledger,frontier,request,blocked$'
+	has "$mode 41f the fields of an entry" "$(jx '.artifacts[0] | keys_unsorted | join(",")')" '^id,kind,path,title,intent,relates,supersedes,superseded-by,state,ledger,frontier,request,blocked,last_checked$'
 	has "$mode 41g a written status: is not state" "$(a task-001 '[.state, .frontier.class] | @tsv')" '^todo	unplanned$'
 	has "$mode 41h every live Plan ledgered: implemented" "$(a task-002 .state)" '^implemented$'
 	has "$mode 41i a done line, and the line itself" "$(a task-003 '[.state, .ledger] | @tsv')" '^done	task-003 — done 2026-10-13 — effect: seen$'
@@ -1261,6 +1261,52 @@ block_tests() {
 	hasnt "$mode 43r and off the blocked rows" "$out" '^blocked   task-011'
 	out=$(cd "$FR" && nav ledger blocked task-011 "again later")
 	has "$mode 43s it can be blocked again" "$(cd "$FR" && nav frontier)" '^blocked   task-011  .* · again later$'
+}
+
+# 44. looks (adr-0013, task-038): sp ledger checked records a look that saw
+# nothing yet. No state; only an awaiting Task takes it; the awaiting rows go to
+# observe, never checked first, then the oldest look; export carries the date.
+# On the frontier fixture: task-002 awaits through plan-001.
+check_tests() {
+	build_front
+	fm docs/tasks/011-t.md task-011 "epic-002"
+	(cd "$FR" && nav ledger implemented task-001 "built in abc123" >/dev/null)
+	out=$(cd "$FR" && nav ledger checked task-001 "looked at the log; no run yet")
+	has "$mode 44a a checked line, in the tasks ledger" "$(cat "$FR/docs/tasks/LEDGER.md")" '^- task-001 — checked 2026-10-09 — looked at the log; no run yet$'
+	out=$(cd "$FR" && nav frontier --awaiting)
+	rows=$(printf '%s\n' "$out" | awk '$1 == "awaiting" { print $2 }' | tr '\n' ' ')
+	[ "$rows" = "task-002 task-001 " ] && ok "$mode 44b never checked first" || no "$mode 44b never checked first" "$out"
+	has "$mode 44c the row routes to observe and shows its look" "$out" '^awaiting  task-001  awaiting an observed effect · checked 2026-10-09 → observe · '
+	has "$mode 44d an unchecked row has no date" "$out" '^awaiting  task-002  awaiting an observed effect → observe · '
+	has "$mode 44e a look is no state: still awaiting, still counted" "$(printf '%s\n' "$out" | sed -n 2p)" 'awaiting an observed effect: 2 Tasks$'
+	contract "$mode 44f contract: frontier --awaiting with a look" "$out"
+	(cd "$FR" && SP_TODAY=2026-10-11 nav ledger checked task-002 "looked at the store; empty" >/dev/null)
+	(cd "$FR" && SP_TODAY=2026-10-12 nav ledger checked task-001 "looked again; still nothing" >/dev/null)
+	rows=$(cd "$FR" && nav frontier --awaiting | awk '$1 == "awaiting" { print $2 }' | tr '\n' ' ')
+	[ "$rows" = "task-002 task-001 " ] && ok "$mode 44g then the oldest look, the latest line per Task" || no "$mode 44g then the oldest look, the latest line per Task" "$rows"
+	(cd "$FR" && SP_TODAY=2026-10-13 nav ledger checked task-002 "and again" >/dev/null)
+	rows=$(cd "$FR" && nav frontier --awaiting | awk '$1 == "awaiting" { print $2 }' | tr '\n' ' ')
+	[ "$rows" = "task-001 task-002 " ] && ok "$mode 44h a newer look sorts later" || no "$mode 44h a newer look sorts later" "$rows"
+	if command -v jq >/dev/null 2>&1; then
+		J=$(cd "$FR" && "$SP" export 2>&1)
+		has "$mode 44i export carries last_checked, state untouched" "$(printf '%s' "$J" | jq -r '.artifacts[] | select(.id == "task-002") | [.state, .frontier.skill, .last_checked] | @tsv')" '^implemented	observe	2026-10-13$'
+		has "$mode 44j never checked: null" "$(printf '%s' "$J" | jq -r '.artifacts[] | select(.id == "task-011") | .last_checked')" '^null$'
+	fi
+	# Refused: anything not awaiting, and a look with nothing said.
+	cp "$FR/docs/tasks/LEDGER.md" "$TMP/led.before"
+	has "$mode 44k a done Task is refused" "$(cd "$FR" && nav ledger checked task-003 "x")" 'task-003 is done: its effect was seen'
+	has "$mode 44l an unbuilt Task is refused" "$(cd "$FR" && nav ledger checked task-011 "x")" 'task-011 is todo: a look needs a built Task'
+	has "$mode 44m effect not achieved is refused" "$(cd "$FR" && nav ledger checked task-004 "x")" 'task-004 is implemented but not awaiting'
+	has "$mode 44n a Plan is refused" "$(cd "$FR" && nav ledger checked plan-001 "x")" 'checked takes a task awaiting an observed effect, and plan-001 is a plan'
+	has "$mode 44o a look needs its text" "$(cd "$FR" && nav ledger checked task-002 " ")" 'ledger needs a verb, an id and a text\|checked needs what was looked at'
+	cmp -s "$FR/docs/tasks/LEDGER.md" "$TMP/led.before" && ok "$mode 44p a refusal writes nothing" || no "$mode 44p a refusal writes nothing" "$(diff "$TMP/led.before" "$FR/docs/tasks/LEDGER.md")"
+	# A note naming a state verb sets nothing; a later done wins over a look.
+	(cd "$FR" && nav ledger checked task-001 "looked — done 2026-10-01 — not really" >/dev/null)
+	has "$mode 44q a note sets no state" "$(cd "$FR" && nav frontier --awaiting)" '^awaiting  task-001  '
+	(cd "$FR" && nav ledger done task-001 "effect: the run log shows it, 2026-10-14" >/dev/null)
+	out=$(cd "$FR" && nav frontier --awaiting)
+	hasnt "$mode 44r a later done wins over the look" "$out" '^awaiting  task-001'
+	has "$mode 44s and a done Task takes no further look" "$(cd "$FR" && nav ledger checked task-001 "x")" 'task-001 is done'
 }
 
 run_mode() { # run_mode <name> <SP_CTAGS> <SP_YQ> <SP_MDQ>
@@ -1823,6 +1869,7 @@ EOF
 	export_tests
 	request_tests
 	block_tests
+	check_tests
 	help_tests
 	unset SP_TODAY
 }

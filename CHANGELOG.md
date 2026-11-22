@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `sp ledger checked <task-id> "looked at <where>; <what is still missing>"`: an evidence pass that saw neither the effect nor its failure leaves one line in `docs/tasks/LEDGER.md` (adr-0013, task-038).
+  - Only a Task awaiting an observed effect takes it; a done, unbuilt or effect-not-achieved Task is refused. A look is not state, and a later `done` or `effect not achieved` wins.
+  - `sp frontier --awaiting` routes the class to `observe` (was `sp ledger done once seen in use`) and orders it requested, then never checked, then the oldest look, then id, showing the date on the row. `sp export` adds a `last_checked` field; version stays 1.
+- A Task carries an `## Effect check` (Where · Seen · Not achieved · Earliest), written by `breakdown` and `top-down` and as a heading by `sp new task`; an older Task gets one as an `## Amendment` on first look (adr-0013, task-037).
 - `sp search <pattern> [--sealed]` searches the docs' text by state (adr-0011). It lists the live docs that match, one row per doc with its first matching line, and counts the sealed ones (closed probes, ledgered Plans, superseded ADRs); `--sealed` lists those too. `bottom-up`'s topic search and `conventions` name it, with grep as the cold path.
 - `sp ledger requested <id> "<note>"` and `sp ledger withdrawn <id> "<why>"`: the operator marks work with one append-only line in the kind's ledger (task-035).
   - Takes a Direction, Epic, Task, Plan or open probe. Refused when done, superseded, deferred, abandoned or parked under a parked ancestor, and for a closed probe, an implemented Plan, an ADR or a product artifact.
