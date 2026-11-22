@@ -114,7 +114,7 @@ facilitated-waterfall skills read and write under `docs/` in the *target* projec
 docs/
   directions/NNN-slug.md   Problem · Appetite · Out of scope · Success signal · Constraints · Risk?
   epics/NNN-slug.md        Goal · Scope · Out of scope · Tasks · Sequencing · Done when   (optional tier)
-  tasks/NNN-slug.md        Goal · Acceptance Criteria · Notes
+  tasks/NNN-slug.md        Goal · Acceptance Criteria · Effect check · Notes
   plans/NNN-slug.md        Context · Steps · Verification · Risk
   plans/LEDGER.md          Append-only record of which Plans are implemented
   adr/NNNN-slug.md         Context · Decision · Consequences · Alternatives   (optional supersedes)

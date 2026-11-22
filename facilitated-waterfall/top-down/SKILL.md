@@ -50,13 +50,13 @@ Decompose the Direction into the units that will be implemented. **This is the d
 
 Confirm the tier with the user before producing output.
 
-**Drill each unit.** For each proposed Task: probe its Goal until it is a single, testable outcome. Challenge scope — "what would a naive engineer add here?" For each proposed Epic: confirm its Scope and Out of scope against the Direction.
+**Drill each unit.** For each proposed Task: probe its Goal until it is a single, testable outcome, then ask where that outcome will show in use — the Task's **Effect check** (Where · Seen · Not achieved · Earliest; `conventions` → Artifact formats, adr-0013 §3). A Where that is a test or a Verification step is the mechanics, not the effect; a Goal with no effect beyond its Verification says so in one line. Challenge scope — "what would a naive engineer add here?" For each proposed Epic: confirm its Scope and Out of scope against the Direction.
 
 **Own the horizontal structure in the Epic (when used).** The Epic's **Tasks** section is the manifest — a table of children with a `Depends on` column; **Sequencing** derives the order (or "parallel"). Dependency edges live *only* in the manifest — never duplicate them onto Tasks, so re-ordering never means editing Tasks.
 
 **Write**, one artifact at a time, confirming each:
 - Epic → `sp new epic "<title>" --relates <direction-id>` (`docs/epics/NNN-slug.md`) — Goal · Scope · Out of scope · Tasks · Sequencing · Done when.
-- Task → `sp new task "<title>" --relates <epic-id or direction-id>,<adr-id>,…` (`docs/tasks/NNN-slug.md`) — Goal · Notes. When breaking a Story down directly (no FW Direction), use `--relates <story-id>`. Run `sp check <id>` on each file written; `sp tree <direction-id>` shows the whole batch. The Story's Acceptance criteria must be covered by the union of its Tasks' Goals.
+- Task → `sp new task "<title>" --relates <epic-id or direction-id>,<adr-id>,…` (`docs/tasks/NNN-slug.md`) — Goal · Effect check · Notes. When breaking a Story down directly (no FW Direction), use `--relates <story-id>`. Run `sp check <id>` on each file written; `sp tree <direction-id>` shows the whole batch. The Story's Acceptance criteria must be covered by the union of its Tasks' Goals.
 
 Allocate the whole batch of numbers atomically (see `conventions` → Numbering). Update `docs/CONTEXT.md` on resolved terms.
 

@@ -39,7 +39,9 @@ Each file: frontmatter (`id` kind-prefixed, as `epic-NNN` / `task-NNN`; `title`,
 
 **Epic body:** Goal · Scope · Out of scope · Tasks · Sequencing · Done when (the Tasks table lists `(planned)` rows for children not yet minted; `conventions` → Artifact formats)
 
-**Task body:** Goal · Acceptance Criteria · Notes — the conventions' skeleton is Goal · Notes, so where the repo's existing tasks fold the criteria into the Goal as testable bullets, keep that form; do not introduce a section shape the skeleton does not list.
+**Task body:** Goal · Acceptance Criteria · Effect check · Notes — the conventions' skeleton is Goal · Effect check · Notes, so where the repo's existing tasks fold the criteria into the Goal as testable bullets, keep that form; do not introduce a section shape the skeleton does not list.
+
+**Effect check** (adr-0013 §3; `conventions` → Artifact formats). Before confirming each Task, ask where its Goal's effect will show in use, and drill it until each bullet names something a later reader can open: **Where** (a store, route, log or command), **Seen**, **Not achieved**, **Earliest** (the first real opportunity). "Tests pass" or a Verification step is never a Where — it is the mechanics, and a later evidence pass reading it would stamp a replay `done`. When the Goal has no effect beyond its Verification (a refactor, pure mechanism), write that one line under the heading instead; never leave the heading empty.
 
 Number sequentially from the highest existing file in the target directory.
 

@@ -1675,6 +1675,7 @@ EOF
 	has "$mode 31e the relates link is kind-prefixed" "$(cat "$f")" '^  - epic-030$'
 	has "$mode 31f skeleton heading" "$(cat "$f")" '^# Task 045: A New Task'
 	has "$mode 31g skeleton sections" "$(cat "$f")" '^## Notes$'
+	has "$mode 31g2 a task skeleton carries the effect check (adr-0013)" "$(cat "$f")" '^## Effect check$'
 	out=$(cd "$R" && nav new adr "Next ADR")
 	has "$mode 31h ADR numbers have four digits" "$out" '^new       adr-0031  docs/adr/0031-next-adr.md'
 	out=$(cd "$R" && nav new probe "Why it broke")

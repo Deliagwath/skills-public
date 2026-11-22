@@ -2509,7 +2509,7 @@ q_new() {
 	case $kind in
 	direction) dir=docs/directions label=Direction secs="Problem|Appetite|Out of scope|Success signal|Constraints|Risk" ;;
 	epic) dir=docs/epics label=Epic secs="Goal|Scope|Out of scope|Tasks|Sequencing|Done when" ;;
-	task) dir=docs/tasks label=Task secs="Goal|Notes" ;;
+	task) dir=docs/tasks label=Task secs="Goal|Effect check|Notes" ;;
 	plan) dir=docs/plans label=Plan secs="Context|Steps|Verification|Risk" ;;
 	adr) dir=docs/adr label=ADR secs="Context|Decision|Consequences|Alternatives" ;;
 	probe) dir=docs/probes label=Probe secs="Trigger|Governing docs|Findings|Open questions|Deliberation|Risk|Reconciliation" ;;
