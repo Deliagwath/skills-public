@@ -97,6 +97,11 @@ Glossary for this repo. Terms only — no implementation detail.
 - **Effect observed** — evidence, at a later real opportunity, that a change had its
   intended effect. Distinct from mechanics verified. It is what separates `done`
   from `implemented`.
+- **Effect check** — a Task's optional `## Effect check`: where its effect will show,
+  what counts as seen and as not achieved, the earliest real opportunity (adr-0013).
+- **Evidence pass** — one `observe` run on an awaiting Task: it reads evidence of real
+  use, never stages it, never fixes, and leaves one `done`, `effect not achieved` or
+  `checked` line. A `checked` line records a look and changes no state (adr-0013).
 - **Read depth** — what a resuming session actually re-read (full, partial, not
   read), as opposed to what it inherited from a summary.
 - **Intent line** — an artifact's one-sentence `intent:`. Walking `relates` upward
