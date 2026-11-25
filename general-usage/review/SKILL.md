@@ -3,7 +3,7 @@ name: general-usage-review
 description: Reviews code changes or facilitated-waterfall documents (Direction, Epic, Task, Plan, and the system's own SKILL.md files) for correctness, quality, and consistency. When reviewing code, auto-discovers ADRs and plans as anchors. Use when reviewing a diff, branch, PR, or document artifact, when the user asks for a review, feedback, or assessment of current work, or when applying the fixes an approved review led to.
 ---
 
-Review the current work and surface structured findings. Handle both code and documents. One-shot — report findings and stop. Do not fix, with one exception: when the user approves a subset of findings, apply exactly that class in a fix pass per `references/doc-fixes.md`, and nothing more.
+Review the current work and surface structured findings. Handle both code and documents. One-shot — report findings and stop. When the user approves a subset of findings, apply exactly that class in a fix pass per `references/doc-fixes.md`.
 
 ---
 
@@ -58,7 +58,7 @@ Evaluate the artifact against its type:
 - **Direction** — clear problem statement, bounded appetite, measurable success signal, explicit out-of-scope, no hidden assumptions?
 - **Epic** — covers the direction's success signal, tasks are coherent and non-overlapping?
 - **Task** — goal is specific, acceptance criteria are testable, no scope creep from the epic?
-- **Plan** — steps are concrete and ordered, verification criteria are runnable, references ADRs where decisions were made? If it already has a ledger entry, treat any edit to the Plan file itself as a Bug/Violation — a ledgered Plan is done writing; corrections belong in a new ledger line, not a rewrite.
+- **Plan** — steps are concrete and ordered, verification criteria are runnable, references ADRs where decisions were made? If it already has a ledger entry, report an edit to the Plan file itself as a Bug/Violation: a ledgered Plan is sealed, and corrections go in a new ledger line.
 
 For any artifact: flag internal contradictions, missing sections, and links that point to non-existent files.
 
@@ -66,7 +66,7 @@ The subject can also be a **system document** — one of the project's own SKILL
 
 - **Doc-vs-tool** — when the document describes a tool (a script or CLI) and the two disagree, read the tool's source for the disputed behavior before flagging; the tool is what runs, and the user keeps the document as its cache. Name which side you would fix, not just that they disagree.
 - **Copies** — a spec line often lives in several places (sibling skills, the README, the docs). Grep the repo for the exact line before reporting, so each finding enumerates all of its copies.
-- **Twin drift** — disagreement between sibling system documents is a finding tagged as drift: report it, never silently reconcile it. That is the system's standing posture (disagreement is the finding), and the user has accepted drift in the current frontier's orbit (the fw skills + the `sp` script).
+- **Twin drift** — disagreement between sibling system documents (the fw skills and the `sp` script among them) is a finding tagged as drift: report both sides, and leave reconciling them to the fix pass.
 
 ---
 
@@ -74,7 +74,7 @@ The subject can also be a **system document** — one of the project's own SKILL
 
 Structure findings by severity. Only include sections that have findings.
 
-Tag each finding (not open questions) with its likely cause, chosen by you, never asked of the user:
+Tag each finding (not open questions) with its likely cause; you choose the tag:
 - `[CONTEXT-GAP]`: the anchors didn't say it, so the fix is to an ADR, a Task or a handbook entry;
 - `[JUDGMENT-GAP]`: the anchors said it and the work missed it, so the fix is to the work;
 - `[UNCLEAR]`: you can't tell which. This is allowed.
@@ -110,10 +110,10 @@ If there are no findings, say so plainly: "No findings. Looks good."
 
 ## Rules
 
-- Do not fix unprompted. When the user approves findings, apply exactly the approved class via the fix pass in `references/doc-fixes.md`; never drift into the deferred classes.
-- Before a fix pass applies anything, check the working tree (`git status`, `git diff` on the target files): a parallel session may have already landed the approved fix, uncommitted. If it is present, the pass verifies instead of re-applying, and it never commits the other session's work — see `references/doc-fixes.md`.
+- Fix on the user's approval: apply exactly the approved class via the fix pass in `references/doc-fixes.md`.
+- Before a fix pass applies anything, check the working tree (`git status`, `git diff` on the target files) for the approved fix already landed, uncommitted, by a parallel session. When it is there, the pass verifies it and leaves its commit to that session — see `references/doc-fixes.md`.
 - End every fix-pass report with the classes found but not approved, listed as deferred, so the next session resumes scope without re-deriving it.
-- Do not manufacture findings to appear thorough. If it looks good, say so.
-- Every finding must include a location (file and line, or document section).
-- Bugs and violations must cite the specific anchor or reason they are wrong.
-- Open questions are not findings — do not inflate severity to force a resolution.
+- Report real findings only; when the work looks good, say so.
+- Every finding includes a location (file and line, or document section).
+- Bugs and violations cite the specific anchor or reason they are wrong.
+- Open questions stay open questions, at their own weight.

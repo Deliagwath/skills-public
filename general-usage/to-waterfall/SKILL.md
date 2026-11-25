@@ -3,7 +3,7 @@ name: general-usage-to-waterfall
 description: Translates findings from a conversation session into facilitated-waterfall artifacts like Directions, Epics, Tasks, ADRs, or docs/CONTEXT.md entries. Use after a discussion to capture emergent decisions, validated problems, resolved domain terms, or implementation plans before they are lost.
 ---
 
-Translate findings from the current session into the appropriate facilitated-waterfall artifact. The session may have used zoom-in, zoom-out, survey, or open conversation — the goal is to capture what emerged before it is lost.
+Translate findings from the current session into the appropriate facilitated-waterfall artifact. The session may have used zoom-in, zoom-out, survey, or open conversation — the goal is to capture what emerged.
 
 ## Phase 1 — Extract
 
@@ -25,7 +25,7 @@ Scan the existing `docs/` structure:
 - Does an ADR already cover this decision, or does it conflict with one?
 - Is a docs/CONTEXT.md term being redefined, or is this net new?
 
-State explicitly what each finding relates to, supersedes, or leaves untouched. Do not write until this is clear.
+State explicitly what each finding relates to, supersedes, or leaves untouched, before writing.
 
 ## Phase 3 — Write
 
@@ -47,7 +47,7 @@ Without `sp`, number each new file sequentially from the highest existing file i
 
 ## Rules
 
-- Do not invent findings. Only capture what the session actually produced.
-- If the session produced nothing worth preserving, say so.
-- If a decision changes, append a new ADR and run `sp supersede <new adr-id> --of <old adr-id>`: the new one gets `supersedes`, the old one gets `superseded-by` and nothing else. Never edit the original's body or decision (facilitated-waterfall adr-0005). Without `sp`, write both keys by hand.
-- Do not duplicate content already in the conversation into the artifact verbatim — distil it.
+- Capture what the session produced.
+- When the session produced nothing worth preserving, say so.
+- When a decision changes, append a new ADR and run `sp supersede <new adr-id> --of <old adr-id>`: the new one gets `supersedes`, the old one gets `superseded-by`, and its body and decision stay as written (facilitated-waterfall adr-0005). Without `sp`, write both keys by hand.
+- Distil the conversation into the artifact rather than copying it.

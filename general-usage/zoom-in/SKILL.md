@@ -16,9 +16,9 @@ If a question can be answered by exploring the codebase or existing docs, explor
 Apply throughout:
 
 - **Sharpen fuzzy language** — when vague or overloaded terms appear, propose a precise canonical term immediately.
-- **Probe with scenarios** — stress-test boundaries with concrete edge cases. "What happens when X?" forces precision that abstract discussion doesn't.
-- **Push back** — do not accept the first answer without testing it. A decision is resolved when it holds under challenge, not when it's first stated.
-- **Resolve inline** — capture decisions as they happen, don't batch. Don't advance to the next branch until the current one is resolved; ambiguity left open becomes a load-bearing assumption downstream.
+- **Probe with scenarios** — stress-test boundaries with concrete edge cases ("What happens when X?").
+- **Push back** — test each answer; a decision is resolved when it holds under challenge.
+- **Resolve inline** — capture decisions as they happen. Resolve the current branch before advancing to the next, since later branches build on it.
 
 ### Cross-reference with code
 

@@ -86,7 +86,7 @@ Walk every branch inside the target exhaustively. For each branch:
 - What does it do — compute, delegate, mutate, return, throw?
 - Follow every nested call recursively until you reach a leaf (I/O, return, throw, or external boundary)
 
-Do not stop at the first level. Chase each call into its implementation.
+Chase each call into its implementation, level by level.
 
 ### Phase 4 — Map side effects
 

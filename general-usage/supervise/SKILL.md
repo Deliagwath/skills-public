@@ -3,9 +3,9 @@ name: general-usage-supervise
 description: Reviews implementation against plans and ADRs in iterative cycles, spawning fresh subagents to avoid context drift, fixing what can be fixed autonomously and escalating decisions that need human input. Use when reviewing code quality, ensuring implementation matches requirements, or running iterative review cycles against a plan.
 ---
 
-Review the current implementation against its plan and ADRs, fix what can be fixed autonomously, and surface decisions that require the programmer to resolve. Each review cycle spawns a fresh subagent so findings are never influenced by the accumulated context of previous cycles.
+Review the current implementation against its plan and ADRs, fix what can be fixed autonomously, and surface decisions that require the programmer to resolve. Each review cycle spawns a fresh subagent, so each cycle's findings come from a clean context.
 
-You are the supervisor. You orchestrate the loop, apply fixes, and make escalation decisions. You do not do the reviewing yourself.
+You are the supervisor. You orchestrate the loop, apply fixes, and make escalation decisions; the reviewer subagents do the reviewing.
 
 ---
 
@@ -17,7 +17,7 @@ Identify what the implementation is measured against. In order of preference:
 2. ADRs referenced by that plan
 3. A task or epic the plan relates to
 
-**Inherit point:** if `sp` is installed (`~/.agent-skills/facilitated-waterfall/scripts/sp`), run `sp docs <path>` for each file in the diff. It finds governing docs the plan doesn't link, and the handbook entries for that code. Read them in rank order within the `budget` line's share, and skip `lookup` (sealed) docs unless one is needed. Without `sp`, take the list above as written.
+**Inherit point:** if `sp` is installed (`~/.agent-skills/facilitated-waterfall/scripts/sp`), run `sp docs <path>` for each file in the diff. It finds governing docs the plan doesn't link, and the handbook entries for that code. Read them in rank order within the `budget` line's share, and open `lookup` (sealed) docs when one is needed. Without `sp`, take the list above as written.
 
 If none exist, ask the user what the implementation is supposed to do before proceeding.
 
@@ -29,7 +29,7 @@ Spawn a fresh subagent. Pass it:
 
 1. The anchor brief from Phase 1
 2. A summary of what was fixed in the previous cycle (empty on the first cycle)
-3. This instruction: "Review the current implementation against the anchor. For each finding, state what is wrong, where it is, and what the correct behaviour should be according to the anchor. Do not fix anything. Return a findings list only."
+3. This instruction: "Review the current implementation against the anchor. For each finding, state what is wrong, where it is, and what the correct behaviour should be according to the anchor. Return a findings list only; the supervisor applies fixes."
 
 Wait for the subagent to return its findings before proceeding.
 
@@ -41,7 +41,7 @@ For each finding returned by the subagent, classify it:
 
 Examples: a bug with a clear correct behaviour defined in the plan, a missed step, a failing test with an obvious cause, a type error, a deviation from the plan with an obvious correction.
 
-**Human decision** — the correct resolution requires a judgement call not covered by the anchor. Fixing it autonomously would be guessing.
+**Human decision** — the correct resolution requires a judgement call not covered by the anchor.
 
 Examples: the plan is silent on an edge case that surfaced, two valid approaches exist and neither is ruled out by the ADRs, a bug with multiple valid fixes with different trade-offs, anything that suggests the plan or ADR itself needs revision.
 
@@ -51,16 +51,16 @@ Examples: the plan is silent on an edge case that surfaced, two valid approaches
 - a finding that a fix already in this cycle has resolved;
 - a note that only confirms the anchor.
 
-Record it and keep looping. Don't ask the programmer about it, and never stop to ask whether to run another cycle. Manufacturing a gate is its own failure.
+Record it and keep looping; the loop continues to the next cycle without asking.
 
-Do not blur the line. If uncertain between autonomous fix and human decision, treat it as a human decision. If uncertain whether something needs action at all, it is not auto-continue.
+When uncertain between autonomous fix and human decision, treat it as a human decision. When uncertain whether something needs action at all, classify it as one of the first two.
 
 **Tag each finding by cause** as well. This tag is separate from the class above: the class routes *now*, the cause calibrates *later*.
 - `CONTEXT-GAP`: the anchor didn't say it. Typical sources are the plan being silent on an edge case and the Scope change exit below. The fix belongs in the anchor (an ADR, a Task, a handbook entry).
 - `JUDGMENT-GAP`: the anchor said it and the implementation missed it. Most autonomous fixes are this. The fix belongs in code.
 - `UNCLEAR`: you can't tell which. This is allowed.
 
-You assign the tag; the programmer never has to.
+You assign the tag.
 
 ## Phase 4 — Fix (supervisor)
 
@@ -71,7 +71,7 @@ Apply all autonomous fixes in one pass. Run any available tests, linters, or typ
 If any human-decision findings remain, surface them one at a time:
 
 - State the finding concisely
-- State why it cannot be resolved autonomously
+- State what the anchor leaves open
 - Present the options you see, with your recommended resolution
 - Wait for the programmer's answer before continuing
 
@@ -91,7 +91,7 @@ Return to Phase 2 and spawn a new reviewer subagent. Continue until one of:
 
 ## Rules
 
-- Never fix a human-decision finding autonomously.
-- Do not loop indefinitely on the same finding. If the same finding recurs after a fix attempt, escalate it as a human decision regardless of original classification.
-- Do not expand scope. Out-of-plan findings are noted as open items — not implemented.
-- The reviewer subagent only reports. It never fixes. All fixes go through the supervisor.
+- Human-decision findings are resolved by the programmer.
+- A finding that recurs after a fix attempt is escalated as a human decision, whatever its original class.
+- Scope stays at the plan: out-of-plan findings are recorded as open items.
+- The reviewer subagent reports; all fixes go through the supervisor.
