@@ -106,7 +106,7 @@ Present three next actions, ranked best-first. Each maps a frontier gap to the s
 |----------|--------|
 | No directions | Propose a problem statement from `README.md` (first 30 lines); `/shape` |
 | `docs/product/` exists but no `docs/PRODUCT.md` | `reflect bootstrap` |
-| Open probe | Resume it: `bottom-up` (`docs/probes/`) or `reflect` (`docs/product/probes/`) |
+| Open probe | Resume it: `bottom-up` (`docs/probes/`) or `reflect` (`docs/product/probes/`). A probe whose only open leg is an effect wait: `observe` on it (adr-0013 §5), plus the next workable row |
 | Product Direction with no Epics/Stories | `direct` Breakdown on that Direction |
 | Story with no FW Direction/Task | `top-down` on that Story |
 | Direction with no Epics | `/breakdown` on that Direction |
