@@ -47,8 +47,9 @@ Make the file with `sp new plan "<title>" --relates <task-id>,<adr-id>,…` (it 
   Cite the file and line you read, so the implementer can re-check it — and the number must come from this
   pass's own read of that file, never from a compacted summary or a sibling plan's citation: it goes stale the
   moment that repo's file moves, and a plausible-but-wrong number only fails when the implementer re-checks.
-  Re-grep each citation as you write the step, and fix it in place before the final `sp check`.
+  Re-grep each citation as you write the step, and fix it in place before the final `sp check`. The same pass covers a citation that is not a file:line — a section number of a doc you read, a quoted line, an id you rely on: read the section before naming it, grep before quoting, and prefix the repo for an id that does not sit in this workspace's numbering, since `sp check` verifies frontmatter links only and never a body citation.
 - Unattended runs (an overseer item, a background job) cannot run Phase 2's one-question-at-a-time interview.
   Drive the drill against code and docs, record each decision with the evidence that took it, and reserve the
   run's block channel for the questions that are genuinely the operator's (whether/when to deploy, whether to
   touch another repo) rather than for anything derivable from the tree.
+- When a step needs something the tree does not have — a verb, a field, a sibling repo's work — do not refuse the plan and do not invent the missing half: design the step inert until it lands (a flag defaulting off, a guard on the measured field) so the plan is whole and safe to build either way. Building the inert step is not a question: it is reversible and inside this repo, so an unattended run builds it. What goes on the block channel is the act that is the operator's — turning the flag on, a deploy or restart, work in the other repo — asked once the inert build is committed (overseer:probe-2026-11-23-overnight-run-lessons F3).

@@ -27,4 +27,4 @@ Re-run `sp frontier` and `sp check`; confirm the built work dropped out of the r
 
 ## Pitfall — commit provenance
 
-Before committing a repo's uncommitted code, `git diff -- <file>` and `git show --stat <last commit>` to see whose stream it is. A sealed probe's "committed" claim covers only what ITS stream committed; an uncommitted diff sitting on top is often a *different* workstream's loose end — flag it to the owner, don't fold it into your reconciliation commit.
+Before committing a repo's uncommitted code, `git diff -- <file>` and `git show --stat <last commit>` to see whose stream it is. A sealed probe's "committed" claim covers only what ITS stream committed; an uncommitted diff sitting on top is often a *different* workstream's loose end — flag it to the owner, don't fold it into your reconciliation commit — with one exception (conventions → Commit, rule 4): an append-only ledger line you can verify against the live state it claims is a completed record, not WIP: commit the file whole and name the borrowed line in the commit message. Unverifiable lines and prose stay out.

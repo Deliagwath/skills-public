@@ -36,7 +36,9 @@ Read the Where for **use the system produced on its own** inside the window: aft
 - **Never generate the use.** No test request, no staged event, no replayed Verification, no run you start yourself. `verifying-live-effect.md`'s "drive the experiment yourself" proves mechanics inside a bottom-up probe. Here a staged instance never earns `done` (adr-0013 §1).
 - **Read-only.** Query the store, tail the log, open the route, run the read command. Change nothing in the system you are reading. That includes config, data, services and the code under test.
 - **Negative checks need provenance, and present zeros are values** (`bottom-up/references/verifying-live-effect.md`). "No X in the log" counts only if the log exists and belongs to the process. A `0` with no null marker is the system's own number.
-- **Record what you counted.** Note the command or query, the window, and what you filtered: rows counted, rows that match, rows dropped and why. That filter goes into the line.
+- **An artifact the system deletes proves nothing by being absent.** A control file a run unlinks when it finishes (a stop file, a lock, a marker) leaves no trace of the event that used it — 0 such files is the ordinary end state, not evidence the leg never fired. Ask which durable column the same code writes instead (a run row's `stop_requested` / `outcome`, the summary line in the run's own output) and query that.
+- **Prove a removal with the same store's before.** When the build deleted a gate, a window or a filter, the store's own rows *before* the build stamp are the counterfactual: the refusal rows it used to write, how many, and the timestamp of the last one, which pins the switchover to the moment the old caller stopped firing. In-window absence alone is weak — it cannot tell "removed" from "nobody tried it this week".
+- **Record what you counted.** Note the command or query, the window, and what you filtered: rows counted, rows that match, rows dropped and why. That filter goes into the line. When two stores record the same act (the caller's wake log and the callee's own record), match them 1:1 within a small time tolerance and report both totals: rows matched on one side only are traffic from another caller — filter them, count them, name them.
 - **The operator's word is evidence.** If the operator tells you in this session that they saw the effect, that counts, and the line says it is the operator's.
 
 ## Phase 4 — Write exactly one line
@@ -46,6 +48,8 @@ Read the Where for **use the system produced on its own** inside the window: aft
 | The effect, as the check's **Seen** describes it, in real use inside the window | `sp ledger done <task-id> "<what was seen> — <store/path>, <window>"` |
 | The check's **Not achieved**: the use happened and the effect did not follow | `sp ledger not-achieved <task-id> "<what was seen> — <store/path>, <window>"` |
 | Neither: no real opportunity yet, the store is empty, or only part of the effect showed | `sp ledger checked <task-id> "looked at <where>, <window>; <what is still missing>"` |
+
+**In a `checked` line, name the shape of the missing opportunity**, not just its absence. Say what would have to change for the leg to get an instance, and whether the current system can produce one at all: if the first real opportunity is structurally unreachable — a queue tier that is never picked while the higher tiers always have work, so no run ever ages to the limit or meets an off tick — say that, because "not yet" and "cannot yet unless X changes" send the next session to different work.
 
 **Before writing `done`, refuse it if** any of these hold. Write `checked` instead and say why:
 - the line could be written from the Plan's Verification or the implemented line alone;
@@ -57,7 +61,7 @@ A Task that serves a Story (its `relates` chain reaches `docs/product/stories/`)
 
 **Never fix in the pass.** A failure you find becomes the `effect not achieved` line, which is `bottom-up`'s trigger. If you repaired it first, the evidence would describe a system that did not exist when you read it. Name the failure precisely in the line and stop.
 
-Then commit the ledger line and any amendment as one batch (`conventions` → Commit). Commit nothing else of this pass. In a repo where `docs/` is not tracked, say so, and leave the line on disk.
+Confirm the line round-tripped before moving on: the Task's file has no Ledger section, so `sp show <id> Ledger` errors and proves nothing — check the row in `sp frontier` (it gains the `checked DATE` marker) or read the line back from the kind's LEDGER.md. Then commit the ledger line and any amendment as one batch (`conventions` → Commit). Commit nothing else of this pass. In a repo where `docs/` is not tracked, say so, and leave the line on disk.
 
 ## A probe's effect leg
 
@@ -73,6 +77,7 @@ Say in a few lines: the item, the check used (as written, or derived and appende
 ## Rules
 
 - One pass, one item, one line. Never write a second line to "correct" a look in the same pass.
+- An unattended run (overseer, a cron pass) often cannot commit the line: the shared `docs/<kind>s/LEDGER.md` already holds another session's uncommitted lines (block lines the tick wrote and never commits). Commit the amendment path-scoped, leave the ledger line in the working tree, and say so — an uncommitted line survives a later revert, and `sp` reads the working tree, so the look is not lost.
 - Never stage the use. Never restate Verification as an effect. Never fix.
 - Unattended runs (overseer, a background job) follow the same rules. A question only the operator can answer, such as "is this effect even wanted any more?", goes into the `checked` line as what is still missing, not into a block.
 - Old Tasks stay valid untouched. Only the amendment from Phase 2 is written to a Task, and only when the Task has no check.
