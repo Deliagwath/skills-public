@@ -5,22 +5,22 @@ description: Takes a real-world signal — or an engineering finding handed up b
 
 Take a concrete signal and carry it upward to the product waterline. The signal might be an experiment result, customer feedback, a retro finding, usage data, a market shift, something that surprised the team, or an engineering finding that a product commitment can't hold. Find the quick interpretation, then **look up**: does it confirm what we've decided, challenge it, or reveal a gap? Settle what it means, honour the commitments above the line, and feed what you learned back down to everything that depends on it. Read `conventions` for the waterlines, the hooks, docs/PRODUCT.md structure, signal classification, append-only rule, confirm-before-write rule, cutover rules, external-dependency grounding, and the plain-language rule.
 
-The working document is a **Probe** (`docs/product/probes/probe-YYYY-MM-DD-slug.md`), the one mutable artifact and the session's working memory. Create it at Anchor. It carries the deliberation, so a fresh session can resume from its header instead of starting over.
+The working document is a **Probe** (`docs/product/probes/probe-YYYY-MM-DD-slug.md`), the one mutable artifact and the session's working memory. Create it at Anchor. It carries the deliberation, so a fresh session resumes from its header.
 
 **Find the entry.**
 
 - A signal from the world → **Anchor**.
-- Loaded by `bottom-up` or `top-down` → **Anchor** in subroutine mode. The signal is the engineering finding the caller hands over, along with its probe or artifact id. Don't re-gather what the caller already found.
+- Loaded by `bottom-up` or `top-down` → **Anchor** in subroutine mode. The signal is the engineering finding the caller hands over, along with its probe or artifact id; work from what the caller gathered.
 - No docs/PRODUCT.md, or the PM asks to build it → **bootstrap**.
-- A signal that names a probe already `open` → **resume it**; don't create a new one. If the message brings a second signal that extends the same open probe's subject — a host, a constraint, or a capability the probe already opened a door on — resume that probe and add the signal to its Signal section; do not spawn a sibling probe: two open probes citing the same D-ids double-book the Affected walk and split the rulings. Before any other action, append the dated block `**YYYY-MM-DD — Resumed.** Read depth:` with one line per Governing decision and governing doc, `FULL`, `PARTIAL (<sections>)` or `NOT_READ`. The block lives where Phase 2 puts the read depth — in the Governing decisions heading: extend the existing read-depth lines in place, and do not create a second read-depth block under Deliberation. What you know only from the probe's own text is `NOT_READ`: the probe is testimony, not ground truth. Then re-read what the next step depends on, through the Phase 2 inherit point.
+- A signal that names a probe already `open` → **resume it**. A second signal in the same message that extends the open probe's subject — a host, a constraint, or a capability the probe already opened a door on — joins that probe's Signal section, so the Affected walk and the rulings stay in one probe. Before any other action, append the dated block `**YYYY-MM-DD — Resumed.** Read depth:` with one line per Governing decision and governing doc, `FULL`, `PARTIAL (<sections>)` or `NOT_READ`. It lives in the Governing decisions heading, where Phase 2 puts the read depth: extend the existing read-depth lines there. What you know only from the probe's own text is `NOT_READ`: the probe is testimony; the docs are ground truth. Then re-read what the next step depends on, through the Phase 2 inherit point.
 
 **`sp`** (`~/.agent-skills/facilitated-waterfall/scripts/sp`, if installed) is how a session reads what the workspace already knows. Its rules are FW `conventions` → Handbook → Inherit. Without it, grep `docs/` as written below.
 
 ## Ascent guard
 
-You may recommend changes to anything **below** the product line: themes, Directions, Epics, Stories. You may **not** overturn a commitment **above** it (a resolved decision, a product-level exclusion) without surfacing the trade-off and recording explicit supersession in docs/PRODUCT.md. If the PM doesn't accept the trade-off, treat the signal as noise: monitor it and don't act on it.
+You may recommend changes to anything **below** the product line: themes, Directions, Epics, Stories. A commitment **above** it (a resolved decision, a product-level exclusion) changes through a surfaced trade-off and an explicit supersession recorded in docs/PRODUCT.md. When the PM does not accept the trade-off, record the signal as noise and monitor it.
 
-`reflect` is the **only** path to writing resolved decisions and product-level out of scope. `direct`, `top-down`, and `bottom-up` read those sections but never write them.
+`reflect` writes the resolved decisions and product-level out of scope. `direct`, `top-down`, and `bottom-up` read those sections.
 
 ---
 
@@ -28,15 +28,15 @@ You may recommend changes to anything **below** the product line: themes, Direct
 
 State the signal and the candidate interpretation in one or two sentences. Create the Probe with `sp new product-probe "<short title>"` (`~/.agent-skills/facilitated-waterfall/scripts/sp`): it writes `docs/product/probes/probe-YYYY-MM-DD-slug.md` with `status: open` and the section headings (without `sp`, write them by hand). Fill the **Signal** section. In subroutine mode, set `relates:` to the caller's probe or artifact so the two probes point at each other.
 
-If docs/PRODUCT.md doesn't exist, stop: "There is no docs/PRODUCT.md to check this signal against. Run `reflect bootstrap` to build it first."
+When docs/PRODUCT.md doesn't exist, stop: "There is no docs/PRODUCT.md to check this signal against. Run `reflect bootstrap` to build it first."
 
 ---
 
 ## Phase 2 — Situate
 
-Read docs/PRODUCT.md. Walk through resolved decisions and product-level out of scope. Identify which D-/X-ids govern or relate to the signal, and record them in the Probe under **Governing decisions**. If no entry covers the signal area, write "gap — no governing decision". That is itself a finding.
+Read docs/PRODUCT.md. Walk through resolved decisions and product-level out of scope. Identify which D-/X-ids govern or relate to the signal, and record them in the Probe under **Governing decisions**. When no entry covers the signal area, write "gap — no governing decision" as a finding.
 
-**Inherit point.** For each governing id, run `sp docs D-NNN` (or `X-NNN`): the row, what supersedes it, and the docs citing it, live ones ranked and sealed ones (resolved probes, research) as `lookup`. If the signal names a code path, also run `sp file <path>`. Read `docs/handbook/index.md` and the handbook entries it links: they hold product practice. Head **Governing decisions** with the read depth: the `sp` budget line (or `sp absent`), then each doc as `FULL` / `PARTIAL` / `NOT_READ`, and any sealed probe opened and why. Without `sp`, `grep -rn "PRODUCT.md#D-NNN" docs/` and leave resolved probes unread unless needed.
+**Inherit point.** For each governing id, run `sp docs D-NNN` (or `X-NNN`): the row, what supersedes it, and the docs citing it, live ones ranked and sealed ones (resolved probes, research) as `lookup`. When the signal names a code path, also run `sp file <path>`. Read `docs/handbook/index.md` and the handbook entries it links: they hold product practice. Head **Governing decisions** with the read depth: the `sp` budget line (or `sp absent`), then each doc as `FULL` / `PARTIAL` / `NOT_READ`, and any sealed probe opened and why. Without `sp`, `grep -rn "PRODUCT.md#D-NNN" docs/` and open resolved probes when needed.
 
 Classify the signal using the table in `conventions`. Present the classification to the PM and ask: "Does that feel right?"
 
@@ -44,7 +44,7 @@ Classify the signal using the table in `conventions`. Present the classification
 
 ## Phase 3 — Deliberate
 
-This is the most important step, and the one most often skipped. The temptation is to record the obvious interpretation and move on. Don't. For every resolved decision the signal touches, climb to the product waterline and test the recorded decision against what reality just told you.
+For every resolved decision the signal touches, climb to the product waterline and test the recorded decision against what reality just told you.
 
 **For a confirming signal:** the decision holds. Record it as supporting evidence in the Probe. No PRODUCT.md change. Close.
 
@@ -58,24 +58,29 @@ This is the most important step, and the one most often skipped. The temptation 
 
 Read the governing decision aloud: "Here is the decision this signal contradicts: [D-NNN + rationale]." Ask: "Does this signal change your confidence in it?"
 
-If the PM says the decision holds, record the signal as a monitored data point: "decision holds; signal logged for future review." In subroutine mode, the caller must now find a mechanism that honours the decision. Say so explicitly. Close.
+When the PM says the decision holds, record the signal as a monitored data point: "decision holds; signal logged for future review." In subroutine mode, tell the caller to find a mechanism that honours the decision. Close.
 
-If the PM says the decision should be revisited, ask: "Is this a full supersession (the old decision is wrong) or a scoped amendment (the decision holds generally but needs a carve-out)?" Drill until the PM's position is precise. Don't accept "let's revisit it" as an outcome: a decision must be made or explicitly deferred.
+When the PM says the decision should be revisited, ask: "Is this a full supersession (the old decision is wrong) or a scoped amendment (the decision holds generally but needs a carve-out)?" Drill until the PM's position is precise, ending in a decision or an explicit deferral.
 
-When the PM's position rests on an external capability — "I imagine <adoptee> has that" — ground it in that turn before the ruling is drafted (conventions → Grounding external dependencies: the capability's docs section plus open-issue state suffices for a *capability* claim; a full source-tree survey is only owed when the unit would *adopt* that mechanism as its base; a ruling that *chooses between deployment shapes* of the dependency — hosted vs self-hosted, free vs paid, relay vs direct — additionally grounds the deciding factors, and the ruling's wording carries them), and report back whatever the grounding revealed about the assumption. The grounded capability is often narrower or more manual than the recall, and the ruling's wording must carry the grounded form, not the ungrounded belief.
+When the PM's position rests on an external capability ("I imagine <adoptee> has that"), ground it in that turn, before the ruling is drafted (conventions → Grounding external dependencies):
+- a *capability* claim → the capability's docs section plus its open-issue state;
+- a mechanism the unit would *adopt* as its base → the full source-tree survey;
+- a ruling that *chooses between deployment shapes* (hosted vs self-hosted, free vs paid, relay vs direct) → also the deciding factors, carried in the ruling's wording.
 
-Record the deliberation in the Probe under **Deliberation**: which interpretation was tested, what the PM decided, and why. This is the durable record. A future session reading only the Probe should understand the reasoning without the chat history.
+Report back what the grounding showed, and word the ruling to the grounded capability.
+
+Record the deliberation in the Probe under **Deliberation**: which interpretation was tested, what the PM decided, and why. This is the durable record: a future session reading the Probe understands the reasoning without the chat history.
 
 ---
 
 ## Phase 4 — Write to docs/PRODUCT.md
 
-Only after Phase 3 resolves, meaning every governing decision has a recorded verdict and none is left as an unresolved amendment candidate.
+Once Phase 3 resolves — every governing decision has a recorded verdict, and every amendment candidate is settled:
 
 **New resolved decision** (next D-id):
 `| D-NNN | [Decision statement] | [Rationale — what evidence drove this; cite the probe] | [D-id superseded, or —] | [Date] |`
 
-The old row stays. A new row with a Supersedes pointer is the only way to reverse a decision.
+The old row stays; a new row with a Supersedes pointer reverses a decision.
 
 **New product-level out of scope entry** (next X-id):
 `- X-NNN — [Exclusion statement] — [Rationale]`
@@ -85,15 +90,15 @@ The old row stays. A new row with a Supersedes pointer is the only way to revers
 First check that docs/CONTEXT.md doesn't already define it.
 
 **Current strategic themes update (cycle shift):**
-If the signal shows a theme is no longer active or a new one is emerging, propose the updated table. A full replacement is allowed at cycle boundaries.
+When the signal shows a theme is no longer active or a new one is emerging, propose the updated table. A full replacement is allowed at cycle boundaries.
 
-Show the current section and the proposed addition side by side. Follow confirm-before-write, and execute only on an explicit yes from the PM.
+Show the current section and the proposed addition side by side. Follow confirm-before-write: execute on the PM's explicit yes.
 
 ---
 
 ## Phase 5 — Propagate
 
-A changed decision is only half done until its dependents are known. For every D-/X-id superseded or amended in Phase 4, find what cites it, directly or through its parents. `sp docs D-NNN` gives the direct citations in one call. Without it:
+For every D-/X-id superseded or amended in Phase 4, find what cites it, directly or through its parents. `sp docs D-NNN` gives the direct citations in one call. Without it:
 
 ```sh
 grep -rlH "PRODUCT.md#D-NNN" docs/ 2>/dev/null        # direct citations
@@ -106,28 +111,28 @@ Walk down: Direction → Epics → Stories → FW Directions/Tasks → ADRs and 
 - Epic or Story → `direct` Refine.
 - FW Direction, Task, ADR, or Plan → `bottom-up` on it, with this probe as the trigger.
 
-Present the Affected list. **Recommend; don't edit.** Each fix is its own deliberate invocation. In subroutine mode, return the outcome and the Affected list to the caller.
+Present the Affected list as recommendations. Each fix is its own deliberate invocation. In subroutine mode, return the outcome and the Affected list to the caller.
 
-**Sibling probe: update it in place before the close.** If a `relates:` sibling probe — the engineering probe that raised the hand-off question this probe just answered — is still `open`, rewrite its pending Reconciliation or open-questions text in place: name the ruling, point at where it is recorded (the PRODUCT.md row), and state what stays open. Open probes are working memory, the append-only rule's exception, so this in-place edit is legal and is not the edit *Recommend; don't edit* forbids — that line governs decision-record artifacts, each of which keeps its own deliberate invocation. The sibling still closes through its own `sp ledger reconcile`; the update only stops its next session from re-asking or double-recording a verdict that has already landed.
+**Update an open sibling probe in place before the close.** When a `relates:` sibling probe — the engineering probe that raised the question this probe just answered — is still `open`, rewrite its pending Reconciliation or open-questions text: name the ruling, point at where it is recorded (the PRODUCT.md row), and state what stays open. Open probes are working memory, so the edit is legal; the Affected artifacts above are decision records and keep their own invocations. The sibling still closes through its own `sp ledger reconcile`.
 
 ---
 
 ## Phase 6 — Reconcile
 
-Distil the probe into a durable record, then freeze it. The Probe can't move to `resolved` until:
+Distil the probe into a durable record, then freeze it. The Probe moves to `resolved` when:
 
-- Every **Governing decision** has a recorded verdict in Deliberation: `holds: [reason]` or `superseded: [new id]`. A probe that deliberated in prose across rounds often lacks the per-id lines: backfill one verdict line per governing id before this gate passes — a verdict the reader must infer is not a recorded verdict.
-- Every **open question** is resolved or explicitly deferred with reason. A verdict the PM is about to give in this session is resolved, not deferred — write it into the probe before reconciling, or the close is premature.
+- Every **Governing decision** has a recorded verdict line in Deliberation: `holds: [reason]` or `superseded: [new id]`, one per governing id (add them where the deliberation ran in prose).
+- Every **open question** is resolved or explicitly deferred with reason. A verdict the PM gives in this session is written into the probe as resolved before reconciling.
 - Every docs/PRODUCT.md change is listed under **Changes**.
-- **Affected** is filled in: either every hit or "none".
-- **Deposit** is done, by FW `conventions` → Handbook → Deposit at a close. The area is the D-/X-ids and paths this probe touched. Product practice is deposited into the same `docs/handbook/` (one handbook per workspace): how this product's decisions are made, which signals proved to be noise, what the PM weighs. A decision itself goes to docs/PRODUCT.md, never the handbook. **Changes** carries the Deposit line: each entry added, promoted, demoted or retired, or `nothing durable`. Handbook entries need no PM confirmation: they start `provisional`, and the cut test prunes them.
-- The Probe is self-contained: a fresh session reading only this file can understand what happened.
+- **Affected** is filled in: every hit, or "none".
+- **Deposit** is done, by FW `conventions` → Handbook → Deposit at a close. The area is the D-/X-ids and paths this probe touched. Product practice is deposited into the same `docs/handbook/` (one handbook per workspace): how this product's decisions are made, which signals proved to be noise, what the PM weighs. Decisions themselves go to docs/PRODUCT.md. **Changes** carries the Deposit line: each entry added, promoted, demoted or retired, or `nothing durable`. Handbook entries need no PM confirmation: they start `provisional`, and the cut test prunes them.
+- The Probe is self-contained: a fresh session reading this file understands what happened.
 
 Close it with `sp ledger reconcile <probe-id> "<one-line summary>"`: it appends `<probe-id> — resolved DATE — outcome: <summary>` to `docs/product/probes/LEDGER.md` and sets `status: resolved`. Without `sp`, append the line (creating the file if missing) and set the status by hand.
 
-**Reconcile exactly once, with the final summary.** The command appends one line per call: a second run — the usual consequence of closing before the last verdict lands — leaves a duplicate line in LEDGER.md. If a re-run happens anyway, dedupe the file to one line per probe, keeping the last. A fact that lands after the close is not re-reconciled: it takes a `## Post-close` section, and if it changes a decision it becomes a new signal (a new probe), while the closed probe's LEDGER line stays stable.
+**Reconcile once, with the final summary.** The command appends one line per call; when a probe has two lines, dedupe the file to one line per probe, keeping the last. A fact that lands after the close takes a `## Post-close` section; when it changes a decision, it becomes a new signal (a new probe), and the closed probe's LEDGER line stays as it is.
 
-If the signal turns out not to be worth pursuing, set `status: abandoned` and keep the probe as a record of why nothing was done.
+When the signal turns out not to be worth pursuing, set `status: abandoned` and keep the probe as a record of why nothing was done.
 
 ---
 
@@ -141,7 +146,7 @@ Interview the PM through five questions using the drilling technique. One questi
 
 **Q2 — Resolved decisions (seed):** "What product decisions have already been made that should never be re-litigated?" For example: "desktop-only, not web", "enterprise, not SMB", "we don't process payments ourselves". Collect the rationale for each; a decision without a rationale is just a rule. Collect 2–5 and number them D-001….
 
-**Q3 — Product-level out of scope:** "What does this product explicitly NOT do: things users ask for but that are permanently off the table?" Require at least two. Push back on anything that sounds like "not yet" rather than "never". Number them X-001….
+**Q3 — Product-level out of scope:** "What does this product explicitly NOT do: things users ask for but that are permanently off the table?" Collect at least two. Push back on anything that sounds like "not yet" rather than "never". Number them X-001….
 
 **Q4 — Current strategic themes:** "What are the 2–4 things the team is focused on this cycle?" Link each to a Direction in docs/product/directions/ if one exists. Remind the PM that themes are below the waterline and get replaced next cycle.
 
@@ -155,9 +160,9 @@ Report: "docs/PRODUCT.md created. `direct` and FW `top-down` will read it before
 
 ## Rules
 
-- Create the Probe at Anchor. Never skip straight from signal to a PRODUCT.md update.
-- Never overturn a commitment above the product line without recorded deliberation and explicit PM acceptance, even when an engineer or `bottom-up` is the one asking.
-- A quick interpretation that only works by ignoring a resolved decision is evidence the decision may be stale. Investigate and record; don't quietly act past it.
-- Deliberate before concluding anything. Test the signal against each governing decision explicitly.
-- Propagate, then reconcile. A supersession with no Affected list leaves stale work downstream that audit will flag.
-- The probe is working memory. Keep the header (Signal · status · Governing decisions · open questions) accurate so any session can resume from it.
+- Create the Probe at Anchor; the PRODUCT.md update follows the deliberation.
+- A commitment above the product line changes through recorded deliberation and explicit PM acceptance, whoever asks.
+- An interpretation that works only by setting a resolved decision aside is a sign the decision may be stale: investigate and record it.
+- Test the signal against each governing decision explicitly before concluding.
+- Propagate, then reconcile: a supersession carries its Affected list.
+- Keep the probe's header (Signal · status · Governing decisions · open questions) current so any session can resume from it.

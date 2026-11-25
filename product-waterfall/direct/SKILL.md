@@ -3,7 +3,7 @@ name: product-waterfall-direct
 description: Descends from product intent to the product waterline — shapes a Direction checked against docs/PRODUCT.md, breaks it into Epics and Stories under docs/product/, and stops at a placed, bounded Story ready to hand to facilitated-waterfall top-down. Also refines an existing Epic or Story, including when bottom-up finds a Story that can't hold on contact with code. The PM equivalent of facilitated-waterfall top-down.
 ---
 
-Descend from intent toward the product waterline. Produce a committed Direction and the Epics/Stories beneath it, and **stop at a placed, bounded Story**. Do not cross into engineering: FW Directions, Tasks, ADRs, Plans, and code belong to `top-down` and `bottom-up`. Read `conventions` for the waterlines, the hooks, docs/PRODUCT.md structure, drilling technique, append-only rule, confirm-before-write rule, cutover rules, external-dependency grounding, and the plain-language rule.
+Descend from intent toward the product waterline. Produce a committed Direction and the Epics/Stories beneath it, and **stop at a placed, bounded Story**. FW Directions, Tasks, ADRs, Plans, and code belong to `top-down` and `bottom-up`. Read `conventions` for the waterlines, the hooks, docs/PRODUCT.md structure, drilling technique, append-only rule, confirm-before-write rule, cutover rules, external-dependency grounding, and the plain-language rule.
 
 **Find the entry.** Interpret the argument to locate the starting point and tier:
 
@@ -44,11 +44,11 @@ Before drilling, present the alignment picture:
 > Potential scope conflicts: [X-ids the problem might touch]
 > Does this complement an active theme, or is it a new one?"
 
-If it conflicts with a resolved decision or product-level out of scope: **hard stop**.
+If it conflicts with a resolved decision or product-level out of scope, stop:
 
-> "This conflicts with a settled product decision: [D-NNN / X-NNN]. To proceed, use `reflect` to process the signal driving this and decide whether the decision should be superseded. I won't write a Direction that contradicts settled product direction."
+> "This conflicts with a settled product decision: [D-NNN / X-NNN]. To proceed, use `reflect` to process the signal driving this and decide whether the decision should be superseded."
 
-If the stated problem's solution space rests on an unresolved premise — a choice of external component, repo or service the work would depend on (which one, or adopt at all) — the premise belongs in this picture, not in the later drill: run `conventions` → Grounding external dependencies on the candidates, present the capability delta (what the project already provides, with the citations that prove it), and resolve the premise with the PM before 1d. Drilling details that the premise decision would preempt is the failure mode — the PM rejects the order and the details are wasted.
+If the stated problem's solution space rests on an unresolved premise — a choice of external component, repo or service the work would depend on (which one, or adopt at all) — settle the premise here, before 1d: run `conventions` → Grounding external dependencies on the candidates, present the capability delta (what the project already provides, with the citations that prove it), and resolve it with the PM. The sections it determines are drilled after.
 
 ### 1d — Drill the Direction
 
@@ -58,9 +58,9 @@ Interview the PM through each section using the drilling technique from `convent
 
 **Appetite** — "How much complexity and effort is this worth? A budget, not an estimate." Probe: "1-week spike, quarter-long, or somewhere between?"
 
-**Out of Scope** — "What would a naive PM or engineer build that you don't want?" Require at least two explicit exclusions; don't accept "nothing is out of scope". Cross-reference product-level out of scope.
+**Out of Scope** — "What would a naive PM or engineer build that you don't want?" Collect at least two explicit exclusions. Cross-reference product-level out of scope.
 
-**Success Signal** — "How will you know it worked? Observable outcome, not aspiration." Reject "users are happier." Accept "time-to-first-payment drops below 5 minutes." A durability signal that would be proven by destroying the only copy of the user's data is shaped non-destructively, and a recovery signal is a demonstrated restore, not a schedule — see `conventions` → Cutover and data-carrying units. A signal that leans on a third-party mechanism is grounded before it is written — see `conventions` → Grounding external dependencies.
+**Success Signal** — "How will you know it worked?" Drill to an observable outcome: "time-to-first-payment drops below 5 minutes" rather than "users are happier." A durability signal is shaped non-destructively, and a recovery signal is a demonstrated restore — see `conventions` → Cutover and data-carrying units. A signal that leans on a third-party mechanism is grounded before it is written — see `conventions` → Grounding external dependencies.
 
 **Constraints** — "What cannot change regardless of how this is solved?" (regulatory, contracts, timeline, team size). Cite the D-/X-ids that bind it.
 
@@ -78,7 +78,7 @@ If a product term resolved during drilling: "Shall I add '[term]' to the docs/PR
 
 Offer to log it under Current Strategic Themes: "Shall I add this Direction to Current Strategic Themes in docs/PRODUCT.md? [yes / skip]"
 
-Then: "Direction written. Run `direct` on it when you're ready to break it down, or stop here." Do not auto-chain.
+Then: "Direction written. Run `direct` on it when you're ready to break it down, or stop here." Breakdown is a separate invocation.
 
 ---
 
@@ -103,7 +103,7 @@ Recommend a tier:
 - **Direction → Stories directly** when the Direction is focused.
 - **Direction → Epics → Stories** only when the work spans several capabilities that each need a manifest.
 
-Propose the whole shape as one-line descriptions: 2–5 Epics, or 3–7 Stories. A Story is something a user can see, do, or benefit from. Plumbing and infrastructure are **not** Stories; note them as engineering concerns for the Story they serve, and `top-down` will make them Tasks. A migration is a Story when it carries a user-visible outcome — the user's data arrives and the user is told what did not — and it obeys the cutover rules in `conventions` → Cutover and data-carrying units; its mechanics are Tasks under it. Confirm the shape before drilling units.
+Propose the whole shape as one-line descriptions: 2–5 Epics, or 3–7 Stories. A Story is something a user can see, do, or benefit from. Note plumbing and infrastructure as engineering concerns for the Story they serve; `top-down` makes them Tasks. A migration is a Story when it carries a user-visible outcome — the user's data arrives and the user is told what did not — and it obeys the cutover rules in `conventions` → Cutover and data-carrying units; its mechanics are Tasks under it. Confirm the shape before drilling units.
 
 ### 2d — Drill each unit (one at a time)
 
@@ -124,7 +124,7 @@ Run `sp check <id>` on each, and `sp tree <product-direction-id>` to see the bat
 
 If the PM gets impatient, offer: "Want me to draft the remaining N units as a batch for review?" Confirm the batch, then write sequentially.
 
-Dependency edges between Stories go **only** in the Epic's Stories manifest and Sequencing. Never put them on the Stories themselves.
+Dependency edges between Stories live in the Epic's Stories manifest and Sequencing.
 
 ### 2f — Hand off at the seam
 
@@ -132,7 +132,7 @@ Stop. Stories are the descent guard's floor. Offer:
 
 > "N Stories written. Each is ready for engineering: run `top-down` on a Story to shape its FW Direction or Tasks. Want to start with [first in Sequencing]?"
 
-Do not start `top-down` without a yes.
+Start `top-down` on a yes.
 
 ---
 
@@ -152,11 +152,11 @@ If any FW Direction, Task, or child Story relates to it, it's **picked up**. Cha
 
 Compare against the format in `conventions`. Classify each section as Missing, Weak, or Complete, and present the result as a table. When loaded by `bottom-up`, also present the engineering finding: which acceptance criterion or scope line can't hold, and why.
 
-If the needed change would contradict a resolved decision or product-level exclusion, stop. It isn't a Refine. Redirect to `reflect`.
+When the needed change would contradict a resolved decision or product-level exclusion, it belongs to `reflect`: stop and redirect there.
 
 ### 3c — Drill and fill
 
-Use the drilling technique for each weak or missing section, or for the contested one. Acceptance Criteria must be observable. Epic Out of Scope needs at least two exclusions. Never invent engineering detail; that's `top-down`'s job.
+Use the drilling technique for each weak or missing section, or for the contested one. Acceptance Criteria are observable. Epic Out of Scope carries at least two exclusions. Engineering detail is `top-down`'s.
 
 ### 3d — Draft and apply
 
@@ -171,11 +171,11 @@ In subroutine mode, return the outcome to `bottom-up`: the Revision text, or "St
 
 ## Rules
 
-- Read docs/PRODUCT.md before authoring anything. No exceptions.
-- Hard-stop if a Direction, Epic, or Story would contradict a resolved decision or product-level exclusion. Redirect to `reflect`.
-- Direction first. Never write an Epic or Story without a Direction above it.
-- Stop at the Story. Never write FW Directions, Tasks, ADRs, Plans, or code; hand off to `top-down`.
-- Never call an external tracker. `tracker:` is an optional link only.
-- Never deposit into `docs/handbook/`. `direct` authors intent and closes no probe; `reflect` and `bottom-up` deposit at their close.
-- Do not auto-chain between phases or into `top-down`. Each is a deliberate invocation.
+- Read docs/PRODUCT.md before authoring anything.
+- When a Direction, Epic, or Story would contradict a resolved decision or product-level exclusion, stop and redirect to `reflect`.
+- Direction first: every Epic and Story has a Direction above it.
+- Stop at the Story and hand off to `top-down`.
+- `tracker:` is an optional link; the skill works from `docs/` alone.
+- `direct` authors intent and closes no probe, so it writes nothing to `docs/handbook/`; `reflect` and `bottom-up` deposit at their close.
+- Each phase, and the hand-off into `top-down`, is a deliberate invocation.
 - Confirm before every write: Direction, Epic, Story, Revision, docs/PRODUCT.md entry.
