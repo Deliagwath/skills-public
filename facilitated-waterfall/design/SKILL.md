@@ -9,7 +9,7 @@ Read the input artifact and its related documents, then interview the user about
 
 Find the input: interpret the argument naturally to locate the file in `docs/epics/` or `docs/directions/`. If no argument, scan and ask.
 
-Ask one question at a time. If a question can be answered by exploring the codebase, explore instead of asking.
+Ask one question at a time. When the codebase can answer a question, explore it instead of asking.
 
 </what-to-do>
 
@@ -17,19 +17,19 @@ Ask one question at a time. If a question can be answered by exploring the codeb
 
 ## Before the first question
 
-Read the input artifact in full. Follow its `relates` to read each parent document. Use these as the frame for the interview — challenge decisions that contradict them.
+Read the input artifact in full. Follow its `relates` to read each parent document. Use these as the frame for the interview, and challenge decisions that contradict them.
 
 ## Drilling technique
 
 Ask one question at a time. Give your recommended answer before waiting for a response. Apply throughout:
 
 - **Sharpen fuzzy language** — when vague or overloaded terms appear, propose a precise canonical term immediately.
-- **Probe with scenarios** — stress-test boundaries with concrete edge cases. "What happens when X?" forces precision that abstract discussion doesn't.
-- **Push back** — do not accept the first answer without testing it. A decision is resolved when it holds under challenge, not when it's first stated.
-- **Resolve inline** — capture decisions as they happen, don't batch.
+- **Probe with scenarios** — stress-test boundaries with concrete edge cases ("What happens when X?").
+- **Push back** — test each answer; a decision is resolved when it holds under challenge.
+- **Resolve inline** — capture decisions as they happen.
 
 ### Challenge against the glossary
-When the user uses a term that conflicts with `docs/CONTEXT.md`, call it out immediately. "Your glossary defines X as Y, but you seem to mean Z — which is it?"
+When the user uses a term that conflicts with `docs/CONTEXT.md`, call it out immediately: "Your glossary defines X as Y, but you seem to mean Z — which is it?"
 
 ### Cross-reference with code
 When the user states how something works, check whether the code agrees. Surface contradictions.
@@ -38,12 +38,12 @@ When the user states how something works, check whether the code agrees. Surface
 When a term is resolved, update `docs/CONTEXT.md` immediately. Glossary only — no implementation details.
 
 ### Offer ADRs sparingly
-Only when all three are true:
+Offer one when all three are true:
 1. Hard to reverse — the cost of changing your mind later is meaningful
 2. Surprising without context — a future reader will wonder "why did they do it this way?"
 3. The result of a real trade-off — there were genuine alternatives
 
-Make each ADR with `sp new adr "<title>" --relates <input artifact id>` (`~/.agent-skills/facilitated-waterfall/scripts/sp`; it writes `docs/adr/NNNN-slug.md` with `id: adr-NNNN`). When it replaces an earlier one, run `sp supersede <new adr-id> --of <old adr-id>`, which writes both edges and leaves the old ADR otherwise untouched. Run `sp check` on what you wrote. Without `sp`, write the file and both keys by hand.
+Make each ADR with `sp new adr "<title>" --relates <input artifact id>` (`~/.agent-skills/facilitated-waterfall/scripts/sp`; it writes `docs/adr/NNNN-slug.md` with `id: adr-NNNN`). When it replaces an earlier one, run `sp supersede <new adr-id> --of <old adr-id>`, which writes both edges and leaves the old ADR otherwise as it is. Run `sp check` on what you wrote. Without `sp`, write the file and both keys by hand.
 
 **Body:** Context (what situation forced this decision) · Decision (what was chosen) · Consequences (what this makes easier or harder going forward).
 

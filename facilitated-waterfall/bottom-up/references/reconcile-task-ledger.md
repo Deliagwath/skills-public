@@ -1,6 +1,6 @@
 # Reconcile a waterfall repo's task ledger to the code
 
-For the "bring `docs/tasks/LEDGER.md` and the frontier in line with the code" task — a reconciliation, not a build. Verify each Task's true state by climbing to the code, then record it. The frontier's derived labels are the starting hypothesis, never the ground truth.
+For the "bring `docs/tasks/LEDGER.md` and the frontier in line with the code" task — a reconciliation, not a build. Verify each Task's true state by climbing to the code, then record it. The frontier's derived labels are the starting hypothesis.
 
 ## Read the current state
 
@@ -11,20 +11,20 @@ sp tree <id>       # the relates subtree, each node's state
 sp show <id> Goal  # a task's intent, to know what to verify
 ```
 
-`sp` is `~/.agent-skills/facilitated-waterfall/scripts/sp`, not on `PATH` — run that file, not `which sp`. If no `docs/tasks/LEDGER.md` exists, the first `sp ledger` line creates it.
+`sp` lives at `~/.agent-skills/facilitated-waterfall/scripts/sp`; run that file. When no `docs/tasks/LEDGER.md` exists, the first `sp ledger` line creates it.
 
 ## Pick each Task's state (climb to the code first)
 
-- **Planned + built + effect observed in use** → `sp ledger done <id> "<the observed effect>"`. `done` = a ledger line in the kind's LEDGER.md alone (adr-0004), and it requires the effect actually observed in use (adr-0003).
-- **Built but the effect never materialized** → the honest `sp ledger not-achieved <id> "<why it didn't show in use>"`. Becomes a *resume* row, not a stamp.
-- **Plan-less (built through probes / code, never planned)** → `sp ledger implemented <id> "<mechanics evidence>"` — it moves from *unplanned* to *awaiting an effect* and drops off the unplanned rows. Deliberately parked → `deferred`; killed → `abandoned`; un-parked → `reopened` (adr-0009). Do **not** route these to `/plan`.
-- **Superseded** → the `superseded-by` edge (`sp supersede`), not a done.
-- **Genuinely open, or old / no-intent and possibly superseded** → leave unplanned and **surface** it for the human's supersede-or-plan call. Never stamp, never kill unilaterally — a scope decision is above the line.
+- **Planned + built + effect observed in use** → `sp ledger done <id> "<the observed effect>"`. `done` is a ledger line in the kind's LEDGER.md (adr-0004), and it records the effect observed in use (adr-0003).
+- **Built, and the effect did not show in use** → `sp ledger not-achieved <id> "<why it didn't show in use>"`. It becomes a *resume* row.
+- **Plan-less (built through probes / code)** → `sp ledger implemented <id> "<mechanics evidence>"`: it moves from *unplanned* to *awaiting an effect*. Deliberately parked → `deferred`; killed → `abandoned`; un-parked → `reopened` (adr-0009).
+- **Superseded** → the `superseded-by` edge (`sp supersede`).
+- **Genuinely open, or old / no-intent and possibly superseded** → leave it unplanned and **surface** it for the human's supersede-or-plan call; a scope decision sits above the line.
 
 ## After the lines land
 
-Re-run `sp frontier` and `sp check`; confirm the built work dropped out of the rows and only genuinely-open work + the honest not-achieved remain, and `check` stayed 0 breaking. Then seal the probe (Phase 5) with a Reconciliation that names the lines written. `done` is a ledger line alone — never a `status:` frontmatter write.
+Re-run `sp frontier` and `sp check`: the built work has left the rows, the genuinely-open work and the not-achieved lines remain, and `check` stays 0 breaking. Then seal the probe (Phase 5) with a Reconciliation that names the lines written.
 
-## Pitfall — commit provenance
+## Commit provenance
 
-Before committing a repo's uncommitted code, `git diff -- <file>` and `git show --stat <last commit>` to see whose stream it is. A sealed probe's "committed" claim covers only what ITS stream committed; an uncommitted diff sitting on top is often a *different* workstream's loose end — flag it to the owner, don't fold it into your reconciliation commit — with one exception (conventions → Commit, rule 4): an append-only ledger line you can verify against the live state it claims is a completed record, not WIP: commit the file whole and name the borrowed line in the commit message. Unverifiable lines and prose stay out.
+Before committing a repo's uncommitted code, run `git diff -- <file>` and `git show --stat <last commit>` to see whose stream it is. A sealed probe's "committed" claim covers what its own stream committed; flag another workstream's uncommitted diff to its owner and keep it out of your commit. The exception (conventions → Commit, rule 4): an append-only ledger line you can verify against the live state it claims is a completed record — commit the file whole and name the borrowed line in the commit message.

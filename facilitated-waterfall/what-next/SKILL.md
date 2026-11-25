@@ -7,28 +7,30 @@ Find the **frontier** of the project — the boundary between what's been done a
 
 The waterfall is a pipeline: Direction → Epic? → Task → Plan → Code. Work flows down. An **orphan** is a live artifact whose next stage is missing; the **frontier** is the shallowest stage that has orphans.
 
-**Source of truth:** the `relates` graph, the ledgers and the codebase. `relates` links point upward (Epic→Direction, Task→Epic, Plan→Task) and are fixed at creation — `sp relate` only ever adds a missing upward edge — so they are reliable. A child's existence proves its parent was broken down; the codebase proves a Plan was implemented.
+**Source of truth:** the `relates` graph, the ledgers and the codebase. `relates` links point upward (Epic→Direction, Task→Epic, Plan→Task) and are fixed at creation (`sp relate` adds a missing upward edge), so they are reliable. A child's existence proves its parent was broken down; the codebase proves a Plan was implemented.
 
-**Constraint:** never read file bodies during the survey. Take the graph from `sp frontier`, or `id` and `relates` from frontmatter with shell commands only.
+**Constraint:** the survey reads frontmatter only. Take the graph from `sp frontier`, or `id` and `relates` from frontmatter with shell commands.
 
 ## Phase 1 — Build the graph
 
-**With `sp`** (`~/.agent-skills/facilitated-waterfall/scripts/sp`; test that file), Phases 1–2 are two calls and nothing else, bodies unread:
-- `sp frontier`: every orphan of Phase 2, one row per artifact in its highest class, resume work first, then the stages shallowest first. Each row gives its stage, its id, the skill that closes it, and its `intent:` line or `no intent line`. The summary line counts the Tasks awaiting an observed effect; `sp frontier --awaiting` lists them, and `--awaiting --all` prints the whole uncut list — the default output can be cut by a `+N more` line, so never count from a cut output. State comes from the ledgers, probe status and supersession, as in Phase 2. An `unsure` line, or a row marked `unsure`, means a `relates` link there is broken or ambiguous. A row marked `requested ·` carries an operator request (`sp ledger requested`, not withdrawn): the operator asked for that work, so weigh it first among equals. A `requested` line counts requests whose artifact has no row (broken down, sealed or parked) and names the first. A `blocked` row (`sp ledger blocked`, listed first) is work stopped on the operator: it carries the question; recommend answering it, through `bottom-up` on the item, which ends with `sp ledger unblocked`.
+**With `sp`** (`~/.agent-skills/facilitated-waterfall/scripts/sp`; test that file), Phases 1–2 are two calls, bodies unread:
+- `sp frontier`: every orphan of Phase 2, one row per artifact in its highest class, resume work first, then the stages shallowest first. Each row gives its stage, its id, the skill that closes it, and its `intent:` line or `no intent line`. State comes from the ledgers, probe status and supersession, as in Phase 2.
+  - The summary line counts the Tasks awaiting an observed effect; `sp frontier --awaiting` lists them, and `--awaiting --all` prints the whole list. A `+N more` line means the output was cut; count from the uncut list.
+  - An `unsure` line, or a row marked `unsure`, means a `relates` link there is broken or ambiguous.
+  - A row marked `requested ·` carries an operator request (`sp ledger requested`, not withdrawn): weigh it first among equals. A `requested` line counts requests whose artifact has no row (broken down, sealed or parked) and names the first.
+  - A `blocked` row (`sp ledger blocked`, listed first) is work stopped on the operator and carries the question: recommend answering it through `bottom-up` on the item, which ends with `sp ledger unblocked`.
+- `sp check --all`: broken or ambiguous links make the graph unreliable there. Name them in the recommendation.
 
-**The row order is class, then requested, then id — read it that way.** `sp frontier` sorts by class rank first; within a class, rows with a request in force come first (direction-006 amendment 2026-11-01), then by id, and the `--awaiting` rows sit below every frontier row, ordered inside their class never-checked first, then the oldest `checked` look (adr-0013) — so a larger id in a shallower class prints above a smaller id in a deeper one, and that is correct. When the operator calls the order wrong, read each row's class and check each artifact's class against its latest ledger line before suspecting the sort: ids jumping classes are the recorded decision (direction-006 C3 owns the class order), not a defect. Re-ranking across classes, or ranking by a declared sequence, is an amendment to direction-006 through `top-down` Phase 3 — and sp models no dependency relation at all, so declared sequencing in an Epic is never a rank key.
+**Row order is class, then requested, then id.** Within a class, rows with a request in force come first (direction-006 amendment 2026-11-01), then by id. The `--awaiting` rows sit below every frontier row, never-checked first, then the oldest `checked` look (adr-0013). A larger id in a shallower class therefore prints above a smaller id in a deeper one. When the operator questions the order, show each row's class and check each artifact's class against its latest ledger line; direction-006 C3 owns the class order. Re-ranking across classes, or ranking by a declared sequence, is an amendment to direction-006 through `top-down` Phase 3. `sp` models no dependency relation, so an Epic's declared sequencing is not a rank key.
 
-- `sp check --all`: links that are broken or ambiguous make the graph unreliable there. Name them in the recommendation rather than reason past them.
+`sp frontier` already joins every tree. `sp frontier <id>` narrows to one Direction or Epic when the answer is cut (`+N more`); `--all` widens the cut output to every Direction when the ask is the whole repo.
 
-Do not call `sp tree` once per Direction: `sp frontier` already joins every tree. `sp frontier <id>` narrows to one Direction or Epic when the answer is cut (`+N more`); `--all` instead widens the cut output back to every Direction when the ask is the whole repo.
-
-**Without `sp`**, from frontmatter — `~/.agent-skills/facilitated-waterfall/what-next/scripts/frontmatter-graph.sh` (this skill's `scripts/`, linked there by `install.sh`; run with `sh`, first arg the repo root) is the one-pass extraction: one line per artifact, `kind|id|relates|intent`, frontmatter only, `relates` captured in both YAML forms. The grep below is its degraded fallback:
+**Without `sp`**, extract from frontmatter with `~/.agent-skills/facilitated-waterfall/what-next/scripts/frontmatter-graph.sh` (this skill's `scripts/`, linked there by `install.sh`; run with `sh`, first arg the repo root): one line per artifact, `kind|id|relates|intent`, with `relates` captured in both YAML forms. The grep below is its fallback:
 
 ```sh
 # id + relates for every artifact, no bodies.
-# `relates` appears in two YAML forms — inline `[a, b]` and block (`  - a` lines).
-# A grep of only the `relates:` line silently drops every block-list link; the
-# `  - ` arm catches the block form (keep only the lines sitting under `relates:`).
+# `relates` appears in two YAML forms — inline `[a, b]` and block (`  - a` lines);
+# the `  - ` arm catches the block form (keep only the lines sitting under `relates:`).
 for d in product/directions product/epics product/stories directions epics tasks plans; do
   echo "=== $d ==="
   grep -rH "^id:\|^relates:\|^  - \|^intent:" docs/$d/ 2>/dev/null
@@ -48,55 +50,55 @@ If `docs/directions/` and `docs/product/` are both empty or missing, this is a g
 
 ## Phase 2 — Find orphans (cheap, no body reads)
 
-These are the classes `sp frontier` lists, in its order; its fixture (`scripts/test.sh` case 39) tests them, so a change here changes it too. Cold, compute them by joining the extraction output on `relates` (split the field on commas, strip brackets and quotes) — in a small script written to scratch and run via terminal, not by eye: the output is long, and in an unattended session `execute_code` may be refused, so terminal is the reliable runner. If the run is scoped to one Direction or Epic (or one repo), compute the classes within that subtree — its children, their children, and so on — and present the project-wide counts as one line of context, not as the recommendation. A link names an artifact by id or, in older docs and ledger lines, by path; both count. A **child** is a live artifact on a lower stage of the same layer: a superseded child is no breakdown, and ADRs and probes are never children. Each artifact is listed once, in its highest class:
+These are the classes `sp frontier` lists, in its order; its fixture (`scripts/test.sh` case 39) tests them, so a change here changes it too. Cold, compute them by joining the extraction output on `relates` (split the field on commas, strip brackets and quotes) in a small script written to scratch and run via terminal (in an unattended session `execute_code` may be refused). When the run is scoped to one Direction or Epic (or one repo), compute the classes within that subtree and give the project-wide counts as one line of context. A link names an artifact by id or, in older docs and ledger lines, by path; both count. A **child** is a live artifact on a lower stage of the same layer; superseded artifacts, ADRs and probes are not children. Each artifact is listed once, in its highest class:
 
 - **Childless product Directions** — no product Epic's or Story's `relates` contains its id.
 - **Unengineered Stories** — no FW Direction's or Task's `relates` contains the Story's id. This is the hand-off frontier.
 - **Open probes** — any `status: open` probe, in either layer. Resuming it ranks above starting new work in the same area.
-- **Childless Directions** — no Epic's or Task's `relates` contains this Direction's id. Epics are optional, so a Direction broken straight into Tasks is not childless. Nor is one whose latest `docs/directions/LEDGER.md` line is `done` (adr-0009 amendment).
-- **Childless Epics** — no Task's `relates` contains this Epic's id, and its latest `docs/epics/LEDGER.md` line is not `done`. An Epic whose own `## Tasks` manifest names a minted Task in another workspace (`repo:task-NNN`) is broken down there, not childless: `sp frontier` shows it as `Tasks in <repo>`, and its state is read in that repo (see *Multi-repo workspaces*).
-- **Partly broken-down Epics** — an Epic with at least one minted Task (here, or `repo:task-NNN` in its manifest) whose `## Tasks` manifest still has `(planned)` rows, and whose latest `docs/epics/LEDGER.md` line is not `done`. It ranks with the childless Epics and closes with `/breakdown` of the rows still planned (task-035). Directions keep no planned-Epics manifest, so a Direction is never partly broken down.
-- **Unplanned Tasks** — no live Plan's `relates` contains this Task's id. A Task whose latest `docs/tasks/LEDGER.md` line is `done` is never an orphan. Neither is one whose latest line is a Plan-less `implemented` (adr-0009): it is awaiting an observed effect.
-- **Unimplemented Plans** — every Plan whose id has no entry in `docs/plans/LEDGER.md`. A Plan with a ledger entry is implemented — no Phase 3 check needed for it.
+- **Childless Directions** — no Epic's or Task's `relates` contains this Direction's id, and its latest `docs/directions/LEDGER.md` line is not `done` (adr-0009 amendment). A Direction broken straight into Tasks has children.
+- **Childless Epics** — no Task's `relates` contains this Epic's id, and its latest `docs/epics/LEDGER.md` line is not `done`. An Epic whose own `## Tasks` manifest names a minted Task in another workspace (`repo:task-NNN`) is broken down there: `sp frontier` shows it as `Tasks in <repo>`, and its state is read in that repo (see *Multi-repo workspaces*).
+- **Partly broken-down Epics** — an Epic with at least one minted Task (here, or `repo:task-NNN` in its manifest) whose `## Tasks` manifest still has `(planned)` rows, and whose latest `docs/epics/LEDGER.md` line is not `done`. It ranks with the childless Epics and closes with `/breakdown` of the rows still planned (task-035). Directions keep no planned-Epics manifest.
+- **Unplanned Tasks** — no live Plan's `relates` contains this Task's id, and its latest `docs/tasks/LEDGER.md` line is neither `done` nor a Plan-less `implemented` (adr-0009; that one is awaiting an observed effect).
+- **Unimplemented Plans** — every Plan whose id has no entry in `docs/plans/LEDGER.md`. A Plan with a ledger entry is implemented.
 
-Sanity-check the counts before believing them: a stage that comes out almost entirely orphan, or whose orphans contradict the ledger lines you just read (a Task whose Plan is in the plan ledger, still counted "unplanned"), means the extraction or the links failed, not that the project is broken. Re-check 2–3 artifacts' raw frontmatter — inline vs block `relates`, id vs path form — and when the links are genuinely under-maintained, say so in the recommendation; the graph is unreliable there and Phase 3's codebase check decides.
+Sanity-check the counts against the ledger lines you just read. A stage that comes out almost entirely orphan, or an orphan the ledger contradicts (a Task whose Plan is in the plan ledger, counted "unplanned"), points at the extraction or the links: re-check 2–3 artifacts' raw frontmatter — inline vs block `relates`, id vs path form. When the links are genuinely under-maintained, say so in the recommendation and let Phase 3's codebase check decide.
 
-A superseded artifact is sealed and is never an orphan. A Direction, Epic or Task whose latest line in its kind's ledger is `deferred` or `abandoned` is **parked** (adr-0009). It and the structure under it are in no class, and they are counted on one line. A later `reopened` line brings them back. Open probes under a parked artifact remain resume work. A written `status:` on a Direction, Epic, Task or Plan is never state (`conventions` → Status & ledger).
+A superseded artifact is sealed and is not an orphan. A Direction, Epic or Task whose latest line in its kind's ledger is `deferred` or `abandoned` is **parked** (adr-0009): it and the structure under it are in no class, counted on one line, until a later `reopened` line. Open probes under a parked artifact remain resume work. State comes from the ledgers, not from a written `status:` on a Direction, Epic, Task or Plan (`conventions` → Status & ledger).
 
-One more class sits **below every frontier class**, because it is guidance, not blocked work:
+One more class sits **below every frontier class**, as guidance:
 
-- **Awaiting an observed effect**: a Task that is implemented, meaning it has a Plan and every live Plan relating to it has a plan-ledger line, but that has no done or effect-not-achieved line in `docs/tasks/LEDGER.md` (a `checked` line from an earlier look keeps it here; adr-0013). Its mechanics were verified, but nobody has yet seen it have its intended effect in use. A Task built without a Plan qualifies by its own `implemented` line in `docs/tasks/LEDGER.md` (adr-0009). If it is built but has no such line, Phase 3's codebase check finds it, and the fix is to record the line. A Task with a later `effect not achieved` line is not in this class. It is a `bottom-up` trigger, and it ranks with open probes.
+- **Awaiting an observed effect**: an implemented Task — it has a Plan and every live Plan relating to it has a plan-ledger line — with no done or effect-not-achieved line in `docs/tasks/LEDGER.md` (a `checked` line from an earlier look keeps it here; adr-0013). Its mechanics were verified, and its intended effect in use is not yet seen. A Task built without a Plan qualifies by its own `implemented` line in `docs/tasks/LEDGER.md` (adr-0009); built work with no such line turns up in Phase 3's codebase check, and the fix is to record the line. A Task with a later `effect not achieved` line is a `bottom-up` trigger and ranks with open probes.
 
-The **frontier** is the shallowest stage that has orphans — that's where the pipeline is blocked and work is most leveraged. Resolve upper stages before lower ones: a Direction with no Epics matters more than a Plan with no code, because nothing downstream can proceed without it.
+The **frontier** is the shallowest stage that has orphans — where the pipeline is blocked and work is most leveraged. Resolve upper stages before lower ones: nothing downstream of a Direction with no Epics can proceed.
 
 ## Phase 3 — Verify candidates against reality
 
-The graph tells you where docs are missing. For Directions/Epics/Tasks it does **not** tell you whether the work itself is done — people routinely implement code without writing the doc first, so an orphan there may already be built. Always cross-check those against the codebase before recommending. Plans are the exception: `docs/plans/LEDGER.md` records completion explicitly, so a Plan without a ledger entry can be trusted as genuinely unimplemented — no cross-check needed unless you suspect the ledger itself is stale (that's `audit-doc`'s job, not this one's).
+The graph shows where docs are missing. For Directions, Epics and Tasks, check the codebase too: code is often written before its doc, so an orphan there may already be built. A Plan without a ledger entry is genuinely unimplemented (`docs/plans/LEDGER.md` records completion; a stale ledger is `audit-doc`'s question).
 
-Take the top ~3 frontier candidates (shallowest orphans first). For each, read **only** its own body if needed, then check reality:
+Take the top ~3 frontier candidates (shallowest orphans first). For each, read its own body if needed (`sp show <id> Goal`), then check reality:
 
 - `grep`/`find` for the symbols, files, or features the artifact describes.
 - `git log --oneline -- <relevant paths>` for commits touching that area.
-- If it's a Plan, run its Verification commands when they're cheap shell checks.
-- Judge each: **already done in code** (doc is just missing — recommend documenting or skipping), **partial**, or **genuinely not started**.
+- For a Plan, run its Verification commands when they're cheap shell checks.
+- Judge each: **already done in code** (recommend documenting or skipping), **partial**, or **genuinely not started**.
 
-Drop any candidate that turns out to be already implemented — replace it with the next-shallowest orphan. Use `git log` recency only to break ties between equally-leveraged candidates; momentum is a weak signal, not a classifier.
+Replace a candidate that is already implemented with the next-shallowest orphan. Use `git log` recency to break ties between equally-leveraged candidates.
 
 ## Phase 4 variant — full inventory (when the ask is "what's left", not "what's next")
 
-When the operator asks for the *list* of what remains, the deliverable is the complete inventory; the Phase 4 ranking then becomes a short closing "what I'd do first" (at most three lines, the sharpest levers, one sentence each).
+When the operator asks for the *list* of what remains, the deliverable is the complete inventory, closed by a short "what I'd do first" (at most three lines, the sharpest levers, one sentence each).
 
-A report shape that reads well, in this order:
+Report in this order:
 
-1. **Open probes** — each with what its `## Open questions` still needs, not its history.
+1. **Open probes** — each with what its `## Open questions` still needs.
 2. **Frontier rows** by class — unplanned Tasks, unimplemented Plans, each with its intent line and its governing parent.
-3. **Awaiting an observed effect** — the full list from `sp frontier --awaiting --all` (never the cut default), grouped by governing parent (first `relates` entry that sits higher), with the count and the ledger filter stated: how many rows have their own task-ledger line, how many are implemented through plan-ledger lines only.
+3. **Awaiting an observed effect** — the full list from `sp frontier --awaiting --all`, grouped by governing parent (first `relates` entry that sits higher), with the count and the ledger filter stated: how many rows have their own task-ledger line, how many are implemented through plan-ledger lines only.
 4. **Parked** in one line (the `parked` line's counts).
-5. **`sp check --all` classified by drift key** — the expected-background classes in one line each (cross-workspace relates, pre-ledger written status, missing intent); breaks and downward `relates` drift named individually, each with its fix.
-6. **The uncommitted git tree** as a WIP row — work in progress that no frontier row surfaces.
-7. **Multi-repo workspace** — one summary line per sibling tree, so the operator sees which repo holds what.
+5. **`sp check --all` classified by drift key** — the background classes in one line each (cross-workspace relates, pre-ledger written status, missing intent); breaks and downward `relates` named individually, each with its fix.
+6. **The uncommitted git tree** as a WIP row.
+7. **Multi-repo workspace** — one summary line per sibling tree, showing which repo holds what.
 
-State the filter behind every count: a frontier row or a drift line is a derived label from the ledgers and the graph, not code-verified work, and a count without its filter reads as a fact it is not.
+State the filter behind every count: frontier rows and drift lines are labels derived from the ledgers and the graph.
 
 ## Phase 4 — Recommend three, ranked
 
@@ -115,14 +117,14 @@ Present three next actions, ranked best-first. Each maps a frontier gap to the s
 | Plan not implemented | `/implement` on that Plan; name the failing/missing verification |
 | Code exists but no doc | Document the built work so the graph reflects it; `/audit-doc` to check it stayed inside the ADRs/Plan |
 | Effect not achieved (task ledger) | `bottom-up` with that ledger line as the Trigger |
-| Awaiting an observed effect | `observe` on that Task (adr-0013): it reads where the Task's Effect check says the effect shows and leaves one line, `done`, `effect not achieved` or `checked`. If the operator says the effect has been seen, `observe` records that too, as their word. Never append a restated Verification result. |
+| Awaiting an observed effect | `observe` on that Task (adr-0013): it reads where the Task's Effect check says the effect shows and leaves one line, `done`, `effect not achieved` or `checked`. When the operator says the effect has been seen, `observe` records that too, as their word |
 | Everything implemented | Propose a new Direction angle from a gap in the README/codebase; `/shape` |
 
-Rank by leverage: shallower frontier stages unblock more downstream work, so they rank higher. "Awaiting an observed effect" ranks below every frontier row. It takes a slot only when fewer than three frontier gaps exist. Otherwise mention the count in one line, so that it never becomes a nag list. Give each recommendation one sentence of rationale naming the evidence. If fewer than three distinct gaps exist, recommend fewer — don't pad.
+Rank by leverage: shallower frontier stages unblock more downstream work. "Awaiting an observed effect" ranks below every frontier row and takes a slot when fewer than three frontier gaps exist; otherwise give its count in one line. Give each recommendation one sentence of rationale naming the evidence. When fewer than three distinct gaps exist, recommend fewer.
 
-**Multi-repo workspaces.** When the governed docs carry cross-workspace links (`repo:id`), this repo's frontier is not the whole pipeline: prerequisites and consumers can sit in sibling repos, and the cross-repo epic's amendment or sequencing — read it in the named repo — defines the true order. Rank by that, and name the cross-repo task(s) in the recommendation so the operator sees the chain. When grouping rows by governing parent, a `repo:`-prefixed or path-form link is a real parent edge — group under the sibling repo it names; a local-only grouping turns cross-repo-governed rows into a false orphan cluster. And because amendments rewrite consumption relationships, verify *which surface* the consumer consumes (a route, a feed, in-process events) in its latest amendment before asserting who consumes what.
+**Multi-repo workspaces.** When the governed docs carry cross-workspace links (`repo:id`), prerequisites and consumers can sit in sibling repos, and the cross-repo epic's amendment or sequencing — read in the named repo — defines the order. Rank by it, and name the cross-repo task(s) in the recommendation. When grouping rows by governing parent, a `repo:`-prefixed or path-form link is a parent edge: group under the sibling repo it names. Before asserting who consumes what, read which surface the consumer consumes (a route, a feed, in-process events) in its latest amendment.
 
-**Intent trace.** Under each recommendation, show the composed intent: one sentence per level, leaf to root, from the `intent:` lines gathered in Phase 1, following the first `relates` entry in list order that sits higher (`conventions` → Artifact formats; `sp trace <id>` gives it). Where a level has no `intent:`, write `<id>: no intent line`. That is information, not a defect, so don't fill it in from the body.
+**Intent trace.** Under each recommendation, show the composed intent: one sentence per level, leaf to root, from the `intent:` lines gathered in Phase 1, following the first `relates` entry in list order that sits higher (`conventions` → Artifact formats; `sp trace <id>` gives it). Where a level has no `intent:`, write `<id>: no intent line`.
 
 ## Phase 5 — Offer to act
 
@@ -135,12 +137,12 @@ If the user picks one, invoke the suggested skill with the context already gathe
 ## Rules
 
 - The relates graph and the codebase are ground truth.
-- The cold extraction must capture `relates` in both YAML forms (inline and block list); a parser of only one form silently drops every link of the other, and the whole frontier comes out wrong.
-- Code can exist ahead of docs — always cross-check candidates against the codebase before recommending, and drop any that are already built.
-- Phase 1–2 are frontmatter-only: `sp frontier` and `sp check --all`, or grep cold. No body reads until Phase 3; then `sp show <id> Goal` rather than the whole file.
-- Phase 3 inspects at most ~3 candidates; body reads stay O(few), independent of project size.
-- Resolve shallower frontier stages before deeper ones — unblock the pipeline top-down.
-- A frontier row's rank comes from its class before its id — an id out of sequence across classes is the spec, not a bug to patch in the sort.
-- In a multi-repo workspace, rank against the cross-repo epic's current sequencing, read in the named repo — not only this repo's frontier; and assert a consumption relationship only after reading the consumer's latest amendment.
-- Recommend three ranked actions; recommend fewer only if fewer real gaps exist — never pad.
-- State the filter behind any count taken from a ledger or the doc tree — a derived label is not a verified fact.
+- The cold extraction captures `relates` in both YAML forms (inline and block list).
+- Cross-check candidates against the codebase before recommending, and replace any that are already built.
+- Phases 1–2 read frontmatter only: `sp frontier` and `sp check --all`, or grep cold. Phase 3 reads bodies with `sp show <id> Goal`.
+- Phase 3 inspects at most ~3 candidates.
+- Resolve shallower frontier stages before deeper ones.
+- A frontier row's rank comes from its class, then its id.
+- In a multi-repo workspace, rank against the cross-repo epic's current sequencing, read in the named repo, and assert a consumption relationship after reading the consumer's latest amendment.
+- Recommend three ranked actions, or fewer when fewer real gaps exist.
+- State the filter behind any count taken from a ledger or the doc tree.

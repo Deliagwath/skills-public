@@ -9,22 +9,24 @@ Find the input: interpret the argument naturally to locate the file in `docs/tas
 
 ## Phase 1 — Read
 
-Read the task (Goal, Notes). Follow `relates` to read each ADR (Decision, Consequences). Note every constraint the ADRs impose — these are non-negotiable in the steps.
+Read the task (Goal, Notes). Follow `relates` to read each ADR (Decision, Consequences). Note every constraint the ADRs impose; the steps honour all of them.
 
-**Inherit point:** for each file or directory the Task names, run `sp file <path>` (or `sp module <dir>`) and read by tier (`conventions` → Handbook → Inherit). That surfaces governing docs the Task doesn't link, and handbook gotchas for those files. State read depth before drilling. `sp` is `~/.agent-skills/facilitated-waterfall/scripts/sp`, not on `PATH`: test that file, not `which sp`. Without it, grep `docs/` for the paths instead.
+**Inherit point:** for each file or directory the Task names, run `sp file <path>` (or `sp module <dir>`) and read by tier (`conventions` → Handbook → Inherit). That surfaces governing docs the Task doesn't link, and handbook gotchas for those files. State read depth before drilling. `sp` lives at `~/.agent-skills/facilitated-waterfall/scripts/sp`; test that file. Without it, grep `docs/` for the paths.
 
 ## Phase 2 — Drill
 
 Before writing, probe the plan with the user. Apply throughout:
 
 - **Sharpen fuzzy language** — when vague or overloaded terms appear, propose a precise canonical term immediately.
-- **Probe with scenarios** — stress-test boundaries with concrete edge cases. "What happens when X?" forces precision that abstract discussion doesn't.
-- **Push back** — do not accept the first answer without testing it. A decision is resolved when it holds under challenge, not when it's first stated.
-- **Resolve inline** — capture decisions as they happen, don't batch.
+- **Probe with scenarios** — stress-test boundaries with concrete edge cases ("What happens when X?").
+- **Push back** — test each answer; a decision is resolved when it holds under challenge.
+- **Resolve inline** — capture decisions as they happen.
 
-For each proposed step: is it atomic and completable without re-reading the ADR? Does it conflict with any ADR decision? For each verification item: is it observable without judgment, or does it require interpretation?
+For each proposed step: is it atomic and completable without re-reading the ADR? Does it conflict with any ADR decision? For each verification item: is it observable without judgment?
 
 Ask one question at a time. Give your recommended answer before waiting for a response.
+
+**Unattended runs** (an overseer item, a background job) drive the drill against code and docs, recording each decision with the evidence that took it. The run's block channel carries the questions that are the operator's (whether/when to deploy, whether to touch another repo).
 
 ## Phase 3 — Write
 
@@ -36,20 +38,11 @@ Make the file with `sp new plan "<title>" --relates <task-id>,<adr-id>,…` (it 
 
 **Steps** — numbered, concrete, completable without re-reading the ADR.
 
-**Verification** — observable checks only (commands to run, behaviours to observe). Not aspirational statements.
+**Verification** — observable checks: commands to run, behaviours to observe.
 
 ## Rules
-- If a step requires a design decision not covered by an ADR, resolve it during drilling or flag it explicitly.
-- Verification items must be checkable without judgment — if it requires interpretation, rewrite it.
-- When a step copies a pattern from another repo (a package layout, a build script, a config row), open that
-  repo's actual files before writing the step. A step written from the pattern's name gets every detail wrong
-  that matters: field names, which config array a row does *not* belong in, which script drives the check.
-  Cite the file and line you read, so the implementer can re-check it — and the number must come from this
-  pass's own read of that file, never from a compacted summary or a sibling plan's citation: it goes stale the
-  moment that repo's file moves, and a plausible-but-wrong number only fails when the implementer re-checks.
-  Re-grep each citation as you write the step, and fix it in place before the final `sp check`. The same pass covers a citation that is not a file:line — a section number of a doc you read, a quoted line, an id you rely on: read the section before naming it, grep before quoting, and prefix the repo for an id that does not sit in this workspace's numbering, since `sp check` verifies frontmatter links only and never a body citation.
-- Unattended runs (an overseer item, a background job) cannot run Phase 2's one-question-at-a-time interview.
-  Drive the drill against code and docs, record each decision with the evidence that took it, and reserve the
-  run's block channel for the questions that are genuinely the operator's (whether/when to deploy, whether to
-  touch another repo) rather than for anything derivable from the tree.
-- When a step needs something the tree does not have — a verb, a field, a sibling repo's work — do not refuse the plan and do not invent the missing half: design the step inert until it lands (a flag defaulting off, a guard on the measured field) so the plan is whole and safe to build either way. Building the inert step is not a question: it is reversible and inside this repo, so an unattended run builds it. What goes on the block channel is the act that is the operator's — turning the flag on, a deploy or restart, work in the other repo — asked once the inert build is committed (overseer:probe-2026-11-23-overnight-run-lessons F3).
+- A step that requires a design decision no ADR covers is resolved during drilling or flagged explicitly.
+- Each verification item is checkable without judgment; rewrite one that needs interpretation.
+- **A step that copies a pattern from another repo** (a package layout, a build script, a config row) is written from that repo's actual files, opened in this pass: field names, which config array a row belongs in, which script drives the check. Cite the file and line you read, re-grep each citation as you write the step, and fix it in place before the final `sp check`.
+- **Every body citation is verified in this pass** — a section number, a quoted line, an id you rely on: read the section before naming it, grep before quoting, and prefix the repo for an id outside this workspace's numbering (`conventions` → Artifact formats).
+- **A step that needs something the tree does not have yet** — a verb, a field, a sibling repo's work — is designed inert until it lands (a flag defaulting off, a guard on the measured field), so the plan is whole and safe to build either way. An unattended run builds the inert step: it is reversible and inside this repo. The block channel carries the operator's act — turning the flag on, a deploy or restart, work in the other repo — asked once the inert build is committed.
