@@ -1,6 +1,6 @@
 ---
 name: facilitated-waterfall-observe
-description: Closes work awaiting an observed effect from evidence of real use. Takes one awaiting Task (or a probe held open by an effect leg), reads where its Effect check says the effect shows, and leaves exactly one ledger line — done, effect not achieved, or checked. Reads and records; never stages the use, never fixes. Use when the frontier lists Tasks awaiting an observed effect, when asked whether something built is actually working in use, or to run an evidence pass.
+description: Closes work awaiting an observed effect from evidence of real use. Takes one awaiting Task (or a probe held open by an effect leg), reads where its Effect check says the effect shows, and leaves exactly one ledger line — done, effect not achieved, or checked. Reads and records only. Use when the frontier lists Tasks awaiting an observed effect, when asked whether something built is actually working in use, or to run an evidence pass.
 ---
 
 Take one piece of built work whose effect has not been seen yet, look where that effect would show in normal use, and record what you found. One pass, one line. Read `conventions` for the ledger lines, the Effect check format and the commit step.
